@@ -20,6 +20,7 @@ import uuid
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from typing_extensions import Annotated
 
 from .constants import INSTANCE_NAME_PREFIX, SlurmVersion
@@ -38,6 +39,7 @@ def build(
     additional_variants: str = "",
     minimal: bool = False,
     verify: bool = False,
+    no_cache: bool = False,
 ):
     """Build a specific Slurm version in a Docker container."""
     console = Console()
@@ -102,12 +104,13 @@ def build(
             verify=verify,
             cache_dir=str(settings.home_cache_dir),
             verbose=verbose,
+            no_cache=no_cache,
         )
         logger.debug("Slurm package creation completed")
         console.print("[bold green]✓ Slurm package created successfully[/bold green]")
     except SlurmFactoryError as e:
         logger.error(f"Failed to create Slurm package: {e}")
-        console.print(f"[bold red]Failed to create Slurm package:[/bold red] {e}")
+        console.print(f"[bold red]Failed to create Slurm package:[/bold red] {escape(str(e))}")
         # Container cleanup will be handled in the utils module
         console.print(f"[yellow]Build container {container_name} may be left running for debugging[/yellow]")
         raise

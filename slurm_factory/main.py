@@ -20,6 +20,7 @@ import sys
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from typing_extensions import Annotated
 
 from slurm_factory.builder import SlurmVersion
@@ -191,7 +192,7 @@ def clean(
         raise typer.Exit(1)
     except Exception as e:
         logger.error(f"Error during cleanup: {e}")
-        console.print(f"[bold red]Error during cleanup: {e}[/bold red]")
+        console.print(f"[bold red]Error during cleanup: {escape(str(e))}[/bold red]")
         raise typer.Exit(1)
 
 
@@ -213,6 +214,9 @@ def build(
     verify: Annotated[
         bool, typer.Option("--verify", help="Enable relocatability verification (for CI/testing)")
     ] = False,
+    no_cache: Annotated[
+        bool, typer.Option("--no-cache", help="Force a fresh build without using Docker cache")
+    ] = False,
 ):
     """
     Build a specific Slurm version.
@@ -224,6 +228,7 @@ def build(
     - --gpu: ~15-25GB, includes CUDA/ROCm support for GPU workloads
     - --minimal: ~1-2GB, basic Slurm only without OpenMPI or extra features
     - --verify: Enable relocatability verification for CI/testing
+    - --no-cache: Force a fresh build without using Docker layer cache
 
     Each version includes:
     - Dynamic Spack configuration with relocatability features
@@ -240,6 +245,7 @@ def build(
         slurm-factory build --gpu                             # Build with GPU support
         slurm-factory build --minimal                         # Build minimal version
         slurm-factory build --verify                          # Build with verification (CI)
+        slurm-factory build --no-cache                        # Build without Docker cache
 
     """
     console = Console()
@@ -260,7 +266,10 @@ def build(
         f"[bold green]Starting build for Slurm {slurm_version} "
         f"with additional variants: {additional_variants}[/bold green]"
     )
-    builder_build(ctx, slurm_version, gpu, additional_variants, minimal, verify)
+    if no_cache:
+        console.print("[bold yellow]Building with --no-cache (fresh build)[/bold yellow]")
+    
+    builder_build(ctx, slurm_version, gpu, additional_variants, minimal, verify, no_cache)
 
 
 if __name__ == "__main__":

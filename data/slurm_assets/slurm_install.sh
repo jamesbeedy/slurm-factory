@@ -93,19 +93,32 @@ chown -R slurm:slurm /var/lib/slurm
 chown slurm:slurm /etc/slurm/slurmdbd.conf
 chown slurm:slurm /etc/slurm/slurm.conf
 
-echo "=== Downloading and installing Slurm Lmod module ==="
+echo "=== Installing Slurm Lmod module ==="
 if [[ -d /usr/share/lmod/lmod/modulefiles ]]; then
-    wget -qO- https://vantage-public-assets.s3.us-west-2.amazonaws.com/slurm/25.05/slurm-module-latest.tar.gz | \
-        tar --no-same-owner --no-same-permissions --touch -xz -C /usr/share/lmod/lmod/modulefiles
-    echo "Slurm Lmod module installed"
+    # Module files should be in the extracted tarball
+    if [[ -d "$(dirname "$SCRIPT_DIR")/slurm" ]]; then
+        echo "Installing Lmod module from extracted tarball"
+        mkdir -p /usr/share/lmod/lmod/modulefiles/slurm
+        cp "$(dirname "$SCRIPT_DIR")/slurm"/*.lua /usr/share/lmod/lmod/modulefiles/slurm/
+        echo "Slurm Lmod module installed from tarball"
+    else
+        echo "Error: Module files not found in tarball at $(dirname "$SCRIPT_DIR")/slurm"
+        exit 1
+    fi
 else
     echo "Warning: Lmod modulefiles directory not found, skipping module installation"
 fi
 
-echo "=== Downloading and installing Slurm software ==="
-wget -qO- https://vantage-public-assets.s3.us-west-2.amazonaws.com/slurm/25.05/slurm-latest.tar.gz | \
-    tar --no-same-owner --no-same-permissions --touch -xz -C /opt/slurm
-echo "Slurm software installed to /opt/slurm"
+echo "=== Installing Slurm software ==="
+# Check if Slurm binaries already exist in the expected location
+if [[ -d /opt/slurm/software/bin ]] && [[ -f /opt/slurm/software/bin/sinfo ]]; then
+    echo "Slurm software already present at /opt/slurm/software"
+else
+    echo "Downloading and extracting Slurm software"
+    wget -qO- https://vantage-public-assets.s3.us-west-2.amazonaws.com/slurm/25.05/slurm-latest.tar.gz | \
+        tar --no-same-owner --no-same-permissions --touch -xz -C /opt/slurm
+    echo "Slurm software installed to /opt/slurm"
+fi
 
 echo "=== Creating Slurm command wrapper scripts ==="
 for i in /opt/slurm/software/bin/sacct \

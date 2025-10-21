@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from rich.console import Console
+from rich.markup import escape
 
 from .constants import (
     BASH_HEADER,
@@ -40,7 +41,7 @@ console = Console()
 
 
 def _build_docker_image(
-    image_tag: str, dockerfile_content: str, cache_dir: str, verbose: bool = False
+    image_tag: str, dockerfile_content: str, cache_dir: str, verbose: bool = False, no_cache: bool = False
 ) -> None:
     """
     Build a Docker image from a Dockerfile string.
@@ -50,11 +51,16 @@ def _build_docker_image(
         dockerfile_content: Complete Dockerfile as a string
         cache_dir: Host directory for cache mounts
         verbose: Whether to show detailed output
+        no_cache: Force a fresh build without using Docker cache
 
     """
     console.print(f"[bold blue]Building Docker image {image_tag}...[/bold blue]")
     logger.debug(f"Building Docker image: {image_tag}")
     logger.debug(f"Dockerfile size: {len(dockerfile_content)} characters")
+    
+    if no_cache:
+        logger.debug("Building with --no-cache flag")
+        console.print("[bold yellow]Building without cache (this may take longer)[/bold yellow]")
 
     process = None
     try:
@@ -68,6 +74,10 @@ def _build_docker_image(
             "-",  # Read Dockerfile from stdin
             ".",  # Build context (we don't actually use files from here)
         ]
+        
+        # Add --no-cache flag if requested
+        if no_cache:
+            cmd.insert(2, "--no-cache")
 
         if verbose:
             logger.debug(f"Docker build command: {' '.join(cmd)}")
@@ -93,7 +103,7 @@ def _build_docker_image(
             for line in process.stdout:
                 line = line.rstrip()
                 if line:
-                    console.print(f"  {line}")
+                    console.print(f"  {escape(line)}")
                     logger.debug(f"Docker build: {line}")
 
         # Wait for process to complete
@@ -118,7 +128,7 @@ def _build_docker_image(
     except Exception as e:
         msg = f"Failed to build Docker image: {e}"
         logger.error(msg)
-        console.print(f"[bold red]{msg}[/bold red]")
+        console.print(f"[bold red]{escape(msg)}[/bold red]")
         raise SlurmFactoryError(msg)
 
 
@@ -166,7 +176,7 @@ def _run_docker_container(container_name: str, image_tag: str, cache_dir: str, v
         if result.returncode != 0:
             msg = f"Failed to start Docker container: {result.stderr}"
             logger.error(msg)
-            console.print(f"[bold red]{msg}[/bold red]")
+            console.print(f"[bold red]{escape(msg)}[/bold red]")
             raise SlurmFactoryError(msg)
 
         container_id = result.stdout.strip()
@@ -181,7 +191,7 @@ def _run_docker_container(container_name: str, image_tag: str, cache_dir: str, v
     except Exception as e:
         msg = f"Failed to start Docker container: {e}"
         logger.error(msg)
-        console.print(f"[bold red]{msg}[/bold red]")
+        console.print(f"[bold red]{escape(msg)}[/bold red]")
         raise SlurmFactoryError(msg)
 
 
@@ -232,7 +242,7 @@ def _exec_in_container(
                 if line:
                     stdout_lines.append(line)
                     # Always show output for build commands
-                    console.print(f"  {line}")
+                    console.print(f"  {escape(line)}")
                     logger.debug(f"Container exec: {line}")
 
         # Wait for process to complete
@@ -248,7 +258,7 @@ def _exec_in_container(
             last_lines = stdout_lines[-20:] if len(stdout_lines) > 20 else stdout_lines
             for line in last_lines:
                 if line.strip():
-                    console.print(f"[red]  {line}[/red]")
+                    console.print(f"[red]  {escape(line)}[/red]")
             raise SlurmFactoryStreamExecError(msg)
 
         logger.debug("Command completed successfully")
@@ -265,7 +275,7 @@ def _exec_in_container(
     except Exception as e:
         msg = f"Command execution failed: {e}"
         logger.error(msg)
-        console.print(f"[bold red]{msg}[/bold red]")
+        console.print(f"[bold red]{escape(msg)}[/bold red]")
         raise SlurmFactoryStreamExecError(msg)
 
 
@@ -305,6 +315,93 @@ def _copy_from_container(container_name: str, source_path: str, dest_path: str) 
     except Exception as e:
         msg = f"Failed to copy from container: {e}"
         logger.error(msg)
+        raise SlurmFactoryError(msg)
+
+
+def _remove_old_docker_image(image_tag: str, verbose: bool = False) -> None:
+    """
+    Remove an old Docker image if it exists.
+
+    Args:
+        image_tag: Tag of the image to remove
+        verbose: Whether to show detailed output
+
+    """
+    logger.debug(f"Checking for existing Docker image: {image_tag}")
+
+    try:
+        # Check if image exists
+        result = subprocess.run(
+            ["docker", "images", "-q", image_tag],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.stdout.strip():
+            # Image exists, remove it
+            console.print(f"[bold yellow]Removing old Docker image: {image_tag}[/bold yellow]")
+            remove_result = subprocess.run(
+                ["docker", "rmi", "-f", image_tag],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if remove_result.returncode == 0:
+                console.print(f"[bold green]✓ Removed old Docker image[/bold green]")
+                logger.debug(f"Removed Docker image: {image_tag}")
+            else:
+                logger.warning(f"Failed to remove Docker image: {remove_result.stderr}")
+        else:
+            logger.debug(f"No existing Docker image found for: {image_tag}")
+
+    except Exception as e:
+        # Don't fail the build if we can't remove the old image
+        logger.warning(f"Could not remove old Docker image: {e}")
+        if verbose:
+            console.print(f"[dim]Warning: Could not remove old image: {escape(str(e))}[/dim]")
+
+
+def _clear_cache_directory(cache_dir: str, verbose: bool = False) -> None:
+    """
+    Clear the cache directory to force a completely fresh build.
+
+    Args:
+        cache_dir: Path to the cache directory to clear
+        verbose: Whether to show detailed output
+
+    """
+    console.print("[bold yellow]Clearing cache directory for fresh build...[/bold yellow]")
+    logger.debug(f"Clearing cache directory: {cache_dir}")
+
+    import shutil
+
+    cache_path = Path(cache_dir)
+    
+    if not cache_path.exists():
+        logger.debug(f"Cache directory does not exist: {cache_dir}")
+        return
+
+    try:
+        # Remove all contents but keep the directory
+        for item in cache_path.iterdir():
+            if item.is_file():
+                item.unlink()
+                if verbose:
+                    console.print(f"[dim]Removed file: {item.name}[/dim]")
+            elif item.is_dir():
+                shutil.rmtree(item)
+                if verbose:
+                    console.print(f"[dim]Removed directory: {item.name}[/dim]")
+        
+        console.print(f"[bold green]✓ Cleared cache directory: {cache_dir}[/bold green]")
+        logger.debug("Cache directory cleared successfully")
+
+    except Exception as e:
+        msg = f"Failed to clear cache directory: {e}"
+        logger.error(msg)
+        console.print(f"[bold red]{escape(msg)}[/bold red]")
         raise SlurmFactoryError(msg)
 
 
@@ -477,15 +574,27 @@ def create_slurm_package(
     verify: bool = False,
     cache_dir: str = "",
     verbose: bool = False,
+    no_cache: bool = False,
 ) -> None:
     """Create slurm package in a Docker container."""
     console.print("[bold blue]Creating slurm package in Docker container...[/bold blue]")
 
     logger.debug(
-        f"Building Slurm package: version={version}, gpu={gpu_support}, minimal={minimal}, verify={verify}"
+        f"Building Slurm package: version={version}, gpu={gpu_support}, minimal={minimal}, verify={verify}, no_cache={no_cache}"
     )
 
     try:
+        # If no_cache is enabled, clean up everything first
+        if no_cache:
+            console.print("[bold yellow]🗑️  Performing fresh build - cleaning all caches...[/bold yellow]")
+            
+            # Remove old Docker image
+            _remove_old_docker_image(image_tag, verbose=verbose)
+            
+            # Clear the cache directory
+            if cache_dir:
+                _clear_cache_directory(cache_dir, verbose=verbose)
+        
         # Generate dynamic Spack configuration
         logger.debug("Generating dynamic Spack YAML configuration")
         spack_yaml = generate_yaml_string(
@@ -503,7 +612,7 @@ def create_slurm_package(
         logger.debug(f"Generated Dockerfile ({len(dockerfile_content)} chars)")
 
         # Build Docker image
-        _build_docker_image(image_tag, dockerfile_content, cache_dir, verbose=verbose)
+        _build_docker_image(image_tag, dockerfile_content, cache_dir, verbose=verbose, no_cache=no_cache)
 
         # Run container
         _run_docker_container(container_name, image_tag, cache_dir, verbose=verbose)
@@ -536,7 +645,7 @@ def create_slurm_package(
     except SlurmFactoryStreamExecError as e:
         msg = f"Build failed: {e}"
         logger.error(msg)
-        console.print(f"[bold red]{msg}[/bold red]")
+        console.print(f"[bold red]{escape(msg)}[/bold red]")
         # Leave container running for debugging
         console.print(f"[yellow]Container {container_name} left running for debugging[/yellow]")
         console.print(f"[yellow]Connect with: docker exec -it {container_name} bash[/yellow]")
@@ -544,7 +653,7 @@ def create_slurm_package(
     except Exception as e:
         msg = f"Failed to create slurm package: {e}"
         logger.error(msg)
-        console.print(f"[bold red]{msg}[/bold red]")
+        console.print(f"[bold red]{escape(msg)}[/bold red]")
         # Cleanup on unexpected errors
         _stop_and_remove_container(container_name, verbose=verbose)
         raise SlurmFactoryError(msg)
