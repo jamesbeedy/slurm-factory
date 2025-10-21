@@ -531,34 +531,39 @@ def _copy_slurm_assets_to_container(container_name: str, verbose: bool = False) 
 
 
 def _get_data_file(filename: str) -> Path:
-    """Get path to a data file, prioritizing installed package locations over development."""
-    # First priority: Virtual environment (for pip installed packages)
+    """Get path to a data file, prioritizing development directory over installed locations."""
+    # First priority: Development mode (files in current directory)
+    # This ensures we use the latest files when developing
+    dev_path = Path.cwd() / "data" / filename
+    if dev_path.exists():
+        logger.debug(f"Using data file from development directory: {dev_path}")
+        return dev_path.resolve()
+
+    # Second priority: Virtual environment (for pip installed packages)
     if hasattr(sys, "prefix") and sys.prefix != sys.base_prefix:
         # We're in a virtual environment
         venv_path = Path(sys.prefix) / "share" / "slurm-factory" / filename
         if venv_path.exists():
+            logger.debug(f"Using data file from virtual environment: {venv_path}")
             return venv_path.resolve()
 
-    # Second priority: System-wide installation locations
+    # Third priority: System-wide installation locations
     try:
         # Check each site-packages directory for shared data
         for site_dir in site.getsitepackages() + [site.getusersitepackages()]:
             if site_dir:
                 installed_path = Path(site_dir) / "share" / "slurm-factory" / filename
                 if installed_path.exists():
+                    logger.debug(f"Using data file from site-packages: {installed_path}")
                     return installed_path.resolve()
 
                 # Also check the parent directory of site-packages for share
                 parent_share = Path(site_dir).parent / "share" / "slurm-factory" / filename
                 if parent_share.exists():
+                    logger.debug(f"Using data file from parent share: {parent_share}")
                     return parent_share.resolve()
     except Exception:
         pass
-
-    # Last fallback: Development mode (files in current directory)
-    dev_path = Path.cwd() / "data" / filename
-    if dev_path.exists():
-        return dev_path.resolve()
 
     # If nothing found, return the development path anyway (will cause an error if file doesn't exist)
     raise FileNotFoundError(f"Data file '{filename}' not found in any expected location")
