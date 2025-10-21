@@ -11,18 +11,18 @@ This document provides a comprehensive overview of slurm-factory's **modern Pyth
 
 ## Overview
 
-slurm-factory is designed around a **modular Python architecture** using Typer CLI framework, comprehensive exception handling, and **relocatable package generation** through an optimized build pipeline. The architecture prioritizes build speed through intelligent caching, dependency classification, and container reuse while producing portable packages that work across diverse HPC environments.
+slurm-factory is designed around a **modular Python architecture** using Typer CLI framework, comprehensive exception handling, and **relocatable package generation** through an optimized build pipeline. The architecture prioritizes build speed through intelligent caching, dependency classification, and Docker container reuse while producing portable packages that work across diverse HPC environments.
 
 ## Module Architecture
 
 ```
 slurm_factory/
 ├── main.py           # Typer CLI application & global options
-├── builder.py        # Build orchestration & LXD management  
+├── builder.py        # Build orchestration & Docker management  
 ├── config.py         # Pydantic settings & cache management
 ├── constants.py      # Enums, templates & build configuration
 ├── spack_yaml.py     # Dynamic Spack configuration generation
-├── utils.py          # LXD operations & package creation
+├── utils.py          # Docker operations & package creation
 └── exceptions.py     # Custom exception hierarchy
 ```
 
@@ -35,15 +35,15 @@ slurm_factory/
 - **Context Management**: Passes configuration and state between commands
 
 #### `builder.py` - Build Orchestration
-- **Build Process**: Coordinates LXD container lifecycle and Spack operations
+- **Build Process**: Coordinates Docker container lifecycle and Spack operations
 - **Instance Management**: Creates, configures, and manages build containers
 - **Progress Tracking**: Rich console output with build status and progress indicators
 - **Error Handling**: Comprehensive error capture and user-friendly error messages
 
 #### `config.py` - Configuration Management
 - **Pydantic Settings**: Type-safe configuration with environment variable support
-- **Cache Directory Management**: Automatic creation and validation of cache directories
-- **Project Settings**: LXD project configuration and build output management
+- **Cache Directory Management**: Automatic creation and validation of cache directories with proper permissions for Docker volume mounts
+- **Project Settings**: Container naming configuration and build output management
 
 #### `exceptions.py` - Error Hierarchy
 - **Structured Exceptions**: Custom exception classes for different error types
@@ -60,12 +60,12 @@ slurm_factory/
 │  (main.py)   │ (config)  │ Handling  │ Output              │
 ├─────────────────────────────────────────────────────────────┤
 │           Build Orchestration (builder.py)                 │
-│  LXD Project │ Container │ Spack     │ Package Assembly    │
+│  Docker      │ Container │ Spack     │ Package Assembly    │
 │  Management  │ Lifecycle │ Config    │ & Validation        │
 ├─────────────────────────────────────────────────────────────┤
 │              Optimized Build Pipeline                      │
-│  Base Image  │ LXD Copy  │ Cache Mount │ Spack Bootstrap   │
-│  (Cached)    │ (Fast)    │ (Persistent)│ (Cached)          │
+│  Base Image  │ Docker Build│ Volume Mount│ Spack Bootstrap │
+│  (Cached)    │ (Fast)     │ (Persistent)│ (Cached)        │
 ├─────────────────────────────────────────────────────────────┤
 │           Dependency Classification & Build                │
 │    External Tools    │    Runtime Libraries Fresh         │
@@ -88,8 +88,8 @@ slurm_factory/
 ```python
 try:
     build_result = build(ctx, slurm_version, gpu, minimal)
-except LXDError as e:
-    console.print(f"[red]LXD operation failed: {e}[/red]")
+except subprocess.CalledProcessError as e:
+    console.print(f"[red]Docker operation failed: {e}[/red]")
 except BuildError as e:
     console.print(f"[red]Build process failed: {e}[/red]")
 except SlurmFactoryError as e:
@@ -104,9 +104,9 @@ except SlurmFactoryError as e:
 ## Build Optimization Strategy
 
 ### 1. **Container Efficiency**
-- **Base Image Reuse**: Single Ubuntu 24.04 base container across all builds
-- **LXD Copy Operations**: Fast container duplication instead of fresh installs
-- **Persistent Mounts**: Cache directories mounted across container lifecycles
+- **Base Image Reuse**: Ubuntu 24.04 Docker image built once, reused across builds
+- **Docker Layer Caching**: Dockerfile layers cached for faster image builds
+- **Volume Mounts**: Cache directories mounted as volumes for persistence across container lifecycles
 
 ### 2. **Multi-Layer Caching**
 ```
@@ -284,7 +284,7 @@ Manages application settings and cache directory structure.
 ```python
 @dataclass
 class Settings:
-    project_name: str           # LXD project name
+    project_name: str           # Project name for container naming
     
     @property
     def home_cache_dir(self) -> Path:      # ~/.slurm-factory/
@@ -348,25 +348,26 @@ Handles Spack environment configuration and YAML generation.
 
 ## Container Architecture
 
-### LXD Integration
+### Docker Integration
 
-slurm-factory uses the `craft-providers` library for LXD container management.
+slurm-factory uses subprocess calls to the Docker CLI for container management.
 
 **Container Lifecycle:**
 ```
-Base Image (ubuntu:24.04) → Base Instance Creation → 
-Build Instance Launch → Setup & Build → Package Extraction → Cleanup
+Base Image (ubuntu:24.04) → Dockerfile Generation → 
+Docker Build → Container Run → Setup & Build → Package Extraction → Cleanup
 ```
 
-**Base Instance Strategy:**
-- Reusable base instances with common dependencies
-- 90-day expiry for automatic cleanup
-- Cached Spack installations for faster builds
+**Image Build Strategy:**
+- Dynamic Dockerfile generation with embedded spack.yaml configuration
+- Docker layer caching for faster subsequent builds  
+- Base image layers cached for common dependencies
 
-**Build Instance Isolation:**
-- Unique instances per build to prevent conflicts
+**Build Container Isolation:**
+- Unique containers per build to prevent conflicts
+- Containers left running on failure for debugging
 - Automatic cleanup after successful builds
-- Resource limits and security constraints
+- Volume mounts for persistent cache access
 
 ### Container Environment
 

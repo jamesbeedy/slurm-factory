@@ -20,7 +20,7 @@ build-backend = "hatchling.build"
 [project]
 name = "slurm-factory"
 version = "0.1.19"
-description = "Slurm builder project by Vantage Compute"
+description = "Slurm builder project by Vantage Compute - builds Slurm packages in Docker containers"
 readme = "README.md"
 authors = [
     {name = "James Beedy", email = "james@vantagecompute.ai"}
@@ -28,7 +28,6 @@ authors = [
 license = {text = "MIT"}
 requires-python = ">=3.11"
 dependencies = [
-    "craft-providers>=3.1.0",
     "typer>=0.19.2",
     "rich>=14.1.0",
     "pyyaml>=6.0.3",
@@ -60,9 +59,8 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel.shared-data]
-"data/lxd-profile.yaml" = "share/slurm-factory/lxd-profile.yaml"
 "data/templates" = "share/slurm-factory/templates"
-"data/spack-repo" = "share/slurm-factory/spack-repo"
+"data/slurm_assets" = "share/slurm-factory/slurm_assets"
 
 
 [tool.hatch.build.targets.sdist]

@@ -27,14 +27,14 @@ from slurm_factory.constants import (
     CONTAINER_BUILD_OUTPUT_DIR,
     CONTAINER_ROOT_DIR,
     CONTAINER_SPACK_CACHE_DIR,
-    LXD_IMAGE,
-    LXD_IMAGE_REMOTE,
     INSTANCE_NAME_PREFIX,
-    CLOUD_INIT_TIMEOUT,
+    BUILD_TIMEOUT,
+    DOCKER_BUILD_TIMEOUT,
     SPACK_SETUP_SCRIPT,
     SLURM_PATCH_FILES,
     BASH_HEADER,
     get_package_creation_script,
+    get_dockerfile,
 )
 
 
@@ -124,29 +124,24 @@ class TestContainerPaths:
         assert CONTAINER_ROOT_DIR == "/root"
 
 
-class TestLXDConfiguration:
-    """Test LXD configuration constants."""
-
-    def test_lxd_image_constants(self):
-        """Test LXD image configuration."""
-        assert LXD_IMAGE == "24.04"
-        assert LXD_IMAGE_REMOTE == "ubuntu"
-        assert isinstance(LXD_IMAGE, str)
-        assert isinstance(LXD_IMAGE_REMOTE, str)
+class TestDockerConfiguration:
+    """Test Docker configuration constants."""
 
     def test_instance_configuration(self):
         """Test instance configuration constants."""
         assert INSTANCE_NAME_PREFIX == "slurm-factory"
 
+    def test_docker_build_timeout(self):
+        """Test Docker build timeout."""
+        assert isinstance(DOCKER_BUILD_TIMEOUT, int)
+        assert DOCKER_BUILD_TIMEOUT > 0
+        assert DOCKER_BUILD_TIMEOUT == 600
 
-class TestTimeouts:
-    """Test timeout constants."""
-
-    def test_cloud_init_timeout(self):
-        """Test cloud init timeout."""
-        assert isinstance(CLOUD_INIT_TIMEOUT, int)
-        assert CLOUD_INIT_TIMEOUT > 0
-        assert CLOUD_INIT_TIMEOUT == 300
+    def test_build_timeout(self):
+        """Test build timeout."""
+        assert isinstance(BUILD_TIMEOUT, int)
+        assert BUILD_TIMEOUT > 0
+        assert BUILD_TIMEOUT == 3600
 
 
 class TestSpackPaths:
@@ -187,6 +182,29 @@ class TestScriptTemplates:
         lines = script.strip().split('\n')
         assert len(lines) > 5  # Should be a substantial script
 
+    def test_get_dockerfile(self):
+        """Test Dockerfile generation."""
+        spack_yaml_content = "spack:\n  specs:\n    - slurm@25.05"
+        dockerfile = get_dockerfile(spack_yaml_content)
+        
+        # Test that it returns a string
+        assert isinstance(dockerfile, str)
+        assert len(dockerfile) > 0
+        
+        # Test that it contains expected elements
+        assert "FROM ubuntu:24.04" in dockerfile
+        assert "RUN" in dockerfile
+        assert "ENV" in dockerfile
+        assert spack_yaml_content in dockerfile
+        
+        # Test that it installs required packages
+        assert "git" in dockerfile
+        assert "build-essential" in dockerfile
+        
+        # Test that it's properly formatted Dockerfile
+        lines = dockerfile.strip().split('\n')
+        assert len(lines) > 10  # Should be a substantial Dockerfile
+
 
 class TestConstantTypes:
     """Test that constants have correct types."""
@@ -200,8 +218,6 @@ class TestConstantTypes:
         """Test string constant types."""
         string_constants = [
             CONTAINER_CACHE_DIR,
-            LXD_IMAGE,
-            LXD_IMAGE_REMOTE,
             INSTANCE_NAME_PREFIX,
             SPACK_SETUP_SCRIPT,
         ]
@@ -211,7 +227,8 @@ class TestConstantTypes:
 
     def test_integer_constants(self):
         """Test integer constant types."""
-        assert isinstance(CLOUD_INIT_TIMEOUT, int)
+        assert isinstance(BUILD_TIMEOUT, int)
+        assert isinstance(DOCKER_BUILD_TIMEOUT, int)
 
 
 class TestConstantValidation:

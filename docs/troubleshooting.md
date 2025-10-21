@@ -43,18 +43,21 @@ slurm-factory build --slurm-version 25.05 --gpu
 
 ## Installation Issues
 
-### LXD Permission Errors
+### Docker Permission Errors
 
-**Problem**: Permission denied when accessing LXD
+**Problem**: Permission denied when accessing Docker daemon
 ```
-Error: You don't have permission to access the LXD daemon
+Error: Got permission denied while trying to connect to the Docker daemon socket
 ```
 
 **Solution**:
 ```bash
-# Add user to lxd group
-sudo usermod -a -G lxd $USER
-newgrp lxd
+# Add user to docker group
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Verify Docker access
+docker ps
 ```
 
 ### UV Not Found
@@ -78,8 +81,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 **Solutions**:
 ```bash
-# Increase container memory
-lxc config set build-container limits.memory 32GB
+# Monitor Docker container memory usage
+docker stats
 
 # Reduce parallel jobs
 export SPACK_BUILD_JOBS=2

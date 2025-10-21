@@ -45,7 +45,17 @@ class Settings:
         return self.home_cache_dir / "spack-sourcecache"
 
     def ensure_cache_dirs(self) -> None:
-        """Create all cache directories if they don't exist with proper permissions."""
+        """
+        Create all cache directories if they don't exist with proper permissions.
+
+        These directories are mounted as Docker volumes during the build process:
+        - builds_dir: Maps to CONTAINER_BUILD_OUTPUT_DIR for final build artifacts
+        - spack_buildcache_dir: Maps to CONTAINER_SPACK_CACHE_DIR for binary cache
+        - spack_sourcecache_dir: Maps to CONTAINER_CACHE_DIR for source tarballs
+
+        The directories are created with 0o777 permissions to ensure Docker containers
+        can read/write to them regardless of the container's user ID.
+        """
         # Create directories with proper permissions (777)
         self.home_cache_dir.mkdir(mode=0o777, exist_ok=True)
         self.builds_dir.mkdir(mode=0o777, exist_ok=True)

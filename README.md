@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 [![PyPI](https://img.shields.io/pypi/v/slurm-factory.svg)](https://pypi.org/project/slurm-factory/)
-[![LXD](https://img.shields.io/badge/LXD-5.0+-orange.svg)](https://linuxcontainers.org/lxd)
+[![Docker](https://img.shields.io/badge/Docker-24.0+-blue.svg)](https://docker.com)
 
 ![Build Status](https://img.shields.io/github/actions/workflow/status/vantagecompute/slurm-factory/ci.yaml?branch=main&label=build&logo=github&style=plastic)
 ![GitHub Issues](https://img.shields.io/github/issues/vantagecompute/slurm-factory?label=issues&logo=github&style=plastic)
@@ -19,15 +19,16 @@
 
 </div>
 
-A modern Python CLI tool that automates building **truly relocatable**, **optimized** Slurm workload manager packages using LXD containers and the Spack package manager. Built for rapid deployment across diverse HPC environments with intelligent caching, portable modules, and bootstrapped compiler workflows.
+A modern Python CLI tool that automates building **truly relocatable**, **optimized** Slurm workload manager packages using Docker containers and the Spack package manager. Built for rapid deployment across diverse HPC environments with intelligent caching, portable modules, and bootstrapped compiler workflows.
 
 ## 🚀 Quick Start
 
 ### Option 1: Install from PyPI (Recommended)
 
 ```bash
-# Install LXD
-sudo snap install lxd && sudo lxd init
+# Install Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && newgrp docker
 
 # Install slurm-factory from PyPI
 pip install slurm-factory
@@ -39,8 +40,9 @@ slurm-factory build
 ### Option 2: Install from Source
 
 ```bash
-# Install LXD and UV
-sudo snap install lxd && sudo lxd init
+# Install Docker and UV
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER && newgrp docker
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and setup
@@ -55,7 +57,7 @@ Extract and deploy packages on your HPC cluster!
 
 ## 🔧 Requirements
 
-- **LXD**: Container runtime for isolated builds
+- **Docker**: Container runtime for isolated builds (version 24.0+)
 - **Python 3.10+**: Runtime environment (automatically configured)
 - **50GB+ disk space**: For build caches and package storage
 - **4+ CPU cores**: Recommended for parallel compilation (8+ cores optimal)
@@ -75,7 +77,7 @@ slurm-factory automatically manages build dependencies within containers:
 - **⚡ Optimized Build Pipeline**: Intelligent caching with base images, build-cache reuse, and parallel compilation
 - **📦 Smart Packaging**: Runtime libraries built fresh, build tools as externals for minimal footprint
 - **🖥️ Multi-Architecture**: CPU-specific optimizations and optional GPU support (CUDA/ROCm)
-- **🏗️ Container Isolation**: Reproducible builds in clean LXD container environments
+- **🏗️ Container Isolation**: Reproducible builds in clean Docker container environments
 - **🚀 Ultra-Fast Rebuilds**: Persistent build-cache and source-cache for subsequent builds (>10x speedup)
 - **✅ CI/CD Integration**: Optional verification mode with `--verify` flag for automated testing
 
@@ -181,8 +183,8 @@ slurm-factory uses an optimized multi-stage build process designed for speed and
 
 ```mermaid
 graph LR
-    A[Base Image] --> B[LXD Copy]
-    B --> C[Cache Mount]
+    A[Base Image] --> B[Docker Build]
+    B --> C[Volume Mount]
     C --> D[Spack Bootstrap]
     D --> E[Slurm Build]
     E --> F[Package Creation]
@@ -202,9 +204,9 @@ graph LR
 ```
 
 ### Stage 1: Base Container Preparation
-- **Base Image**: Ubuntu 24.04 LXD container with essential build tools
-- **Cache Strategy**: Reuse base container across builds for consistency
-- **Mount Points**: Persistent cache directories for build and source artifacts
+- **Base Image**: Ubuntu 24.04 Docker container with essential build tools
+- **Cache Strategy**: Docker volume mounts for persistent caches
+- **Mount Points**: Host cache directories mounted into container for build and source artifacts
 
 ### Stage 2: Dependency Resolution & Optimization
 - **External Tools**: Use system build tools (cmake, autotools, compilers) as externals

@@ -1,0 +1,21 @@
+[Unit]
+Description=Slurm database daemon
+After=network-online.target remote-fs.target sssd.service
+Wants=network-online.target
+ConditionPathExists=/etc/slurm/slurmdbd.conf
+Documentation=man:slurmdbd(8)
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/slurmdbd
+User=slurm
+Group=slurm
+RuntimeDirectory=slurmdbd
+RuntimeDirectoryMode=0755
+ExecStart=/bin/bash -lc 'source /etc/profile.d/z00_lmod.sh; exec /opt/slurm/software/sbin/slurmdbd -D -s'
+ExecReload=/bin/kill -HUP $MAINPID
+LimitNOFILE=65536
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target

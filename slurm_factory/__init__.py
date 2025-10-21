@@ -16,16 +16,16 @@
 Slurm Factory - Modern Python CLI for Building Relocatable Slurm Packages.
 
 A comprehensive tool for building optimized, relocatable Slurm workload manager
-packages using LXD containers and the Spack package manager. Features a modern
+packages using Docker containers and the Spack package manager. Features a modern
 Typer CLI interface, comprehensive exception handling, and intelligent caching.
 
 Main modules:
 - main: Typer CLI application with global options
-- builder: Build orchestration and LXD management
+- builder: Build orchestration and Docker container management
 - config: Pydantic settings and cache management  
 - constants: Enums, templates, and build configuration
 - spack_yaml: Dynamic Spack configuration generation
-- utils: LXD operations and package creation utilities
+- utils: Docker operations and package creation utilities
 - exceptions: Custom exception hierarchy
 """
 import importlib.metadata

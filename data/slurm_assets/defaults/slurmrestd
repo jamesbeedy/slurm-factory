@@ -1,0 +1,2 @@
+SLURMRESTD_OPTIONS=""
+SLURM_CONF=/etc/slurm/slurm.conf

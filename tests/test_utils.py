@@ -33,14 +33,13 @@ class TestConstants:
         assert hasattr(utils, 'console')
 
     def test_exception_imports(self):
-        """Test that custom exceptions are imported."""
-        from slurm_factory import utils
+        """Test that custom exceptions can be accessed."""
+        from slurm_factory import exceptions
         
-        # Should be able to access exception classes
-        # (they're imported at module level)
-        assert hasattr(utils, 'SlurmFactoryError')
-        assert hasattr(utils, 'SlurmFactoryInstanceCreationError')
-        assert hasattr(utils, 'SlurmFactoryStreamExecError')
+        # Should be able to access exception classes from exceptions module
+        assert hasattr(exceptions, 'SlurmFactoryError')
+        assert hasattr(exceptions, 'SlurmFactoryInstanceCreationError')
+        assert hasattr(exceptions, 'SlurmFactoryStreamExecError')
 
 
 class TestModuleStructure:
@@ -59,9 +58,12 @@ class TestModuleStructure:
         
         # Test for existence of key functions
         expected_functions = [
-            '_stream_exec_output',  # Private but important
             'create_slurm_package',
-            'set_profile',
+            '_build_docker_image',
+            '_run_docker_container',
+            '_exec_in_container',
+            '_copy_from_container',
+            '_stop_and_remove_container',
         ]
         
         for func_name in expected_functions:

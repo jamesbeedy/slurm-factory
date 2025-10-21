@@ -11,22 +11,27 @@ This guide covers the different ways to install and set up Slurm Factory for bui
 
 ## Prerequisites
 
-Before installing Slurm Factory, you need to have LXD installed and configured:
+Before installing Slurm Factory, you need to have Docker installed and configured:
 
 ```bash
-# Install LXD via snap
-sudo snap install lxd
+# Install Docker
+curl -fsSL https://get.docker.com | sh
 
-# Initialize LXD (follow the prompts for network and storage)
-sudo lxd init
+# Add your user to the docker group (avoids needing sudo)
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Verify Docker is working
+docker --version
+docker run hello-world
 ```
 
 **System Requirements:**
 - **OS**: Ubuntu 20.04+ or equivalent Linux distribution
+- **Docker**: 24.0+ (latest stable version recommended)
 - **Python**: 3.9+ (automatically handled by pip/pipx)
-- **Memory**: 4GB+ RAM recommended for builds
+- **Memory**: 4GB+ RAM recommended for builds (16GB+ optimal)
 - **Storage**: 50GB+ free space for build cache and packages
-- **LXD**: Latest stable version via snap
 
 ## Installation Methods
 
@@ -123,12 +128,11 @@ slurm-factory --help
 slurm-factory build --help
 slurm-factory clean --help
 
-# Verify LXD integration (should list or create project)
-slurm-factory --verbose clean
+# Verify Docker integration (should show Docker version)
+docker --version
 
-# Test basic functionality (optional - will create LXD project)
-slurm-factory --project-name test build --base-only
-slurm-factory --project-name test clean --full
+# Test basic functionality (builds a Slurm package)
+slurm-factory build --slurm-version 25.05
 ```
 
 ## Configuration
@@ -138,7 +142,7 @@ slurm-factory --project-name test clean --full
 Slurm Factory supports these environment variables:
 
 ```bash
-# Set default LXD project name
+# Set default project name (used in container naming)
 export IF_PROJECT_NAME=my-slurm-builds
 
 # Now all commands use this project by default
@@ -176,7 +180,7 @@ slurm-factory build --minimal
 # Build specific version
 slurm-factory build --slurm-version 24.11
 
-# Use custom LXD project
+# Use custom project name (for container naming)
 slurm-factory --project-name production build --slurm-version 25.05
 
 # Clean up when done
@@ -185,16 +189,16 @@ slurm-factory clean --full
 
 ## Troubleshooting
 
-### LXD Permission Issues
+### Docker Permission Issues
 ```bash
-# Add your user to the lxd group
-sudo usermod -a -G lxd $USER
+# Add your user to the docker group
+sudo usermod -aG docker $USER
 
 # Log out and back in, or use newgrp
-newgrp lxd
+newgrp docker
 
-# Test LXD access
-lxc list
+# Test Docker access
+docker ps
 ```
 
 ### Python Path Issues

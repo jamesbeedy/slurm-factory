@@ -1,0 +1,2 @@
+SLURMDBD_OPTIONS=""
+SLURMDBD_CONF=/etc/slurm/slurmdbd.conf
