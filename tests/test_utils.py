@@ -59,11 +59,10 @@ class TestModuleStructure:
         # Test for existence of key functions
         expected_functions = [
             'create_slurm_package',
+            'extract_slurm_package_from_image',
             '_build_docker_image',
-            '_run_docker_container',
-            '_exec_in_container',
-            '_copy_from_container',
-            '_stop_and_remove_container',
+            '_remove_old_docker_image',
+            '_clear_cache_directory',
         ]
         
         for func_name in expected_functions:

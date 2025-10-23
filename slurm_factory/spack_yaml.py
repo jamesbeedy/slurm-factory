@@ -406,9 +406,24 @@ def generate_spack_config(
             "view": {
                 "default": {
                     "root": view_root,
+                    "link": "run",  # Link all runtime dependencies (not just roots)
                     "link_type": "hardlink",  # Use hardlinks instead of symlinks for easier copying
-                    "select": view_packages,  # Only include essential runtime dependencies in view
-                    "exclude": ["^cmake", "^autoconf", "^automake", "^libtool", "^bison", "^flex"],
+                    "exclude": [
+                        "^cmake",
+                        "^autoconf",
+                        "^automake",
+                        "^libtool",
+                        "^bison",
+                        "^flex",
+                        "^gmake",
+                        "^m4",
+                        "^pkgconf",
+                        "^diffutils",
+                        "^findutils",
+                        "^gettext",
+                        "^tar",
+                        "^python",
+                    ],  # Exclude build tools and system packages
                 }
             },
             "config": {

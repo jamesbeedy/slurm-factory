@@ -98,3 +98,6 @@ show-config-verify:
 [group("config")]
 show-versions:
     {{uv_run}} python -c "from slurm_factory.constants import SLURM_VERSIONS; print('Available Slurm versions:'); [print(f'  {k}: {v}') for k, v in SLURM_VERSIONS.items()]"
+
+aws-sync:
+    aws s3 cp --profile james-vantage-runtimes /home/bdx/.slurm-factory/slurm-25.05-software.tar.gz s3://vantage-public-assets/slurm/25.05/slurm-latest.tar.gz --acl public-read

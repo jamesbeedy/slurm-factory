@@ -15,22 +15,15 @@
 """Utils used throughout the slurm-factory package."""
 
 import logging
-import site
 import subprocess
-import sys
 from pathlib import Path
 
 from rich.console import Console
 from rich.markup import escape
 
 from .constants import (
-    BASH_HEADER,
-    BUILD_TIMEOUT,
-    CONTAINER_BUILD_OUTPUT_DIR,
-    CONTAINER_SLURM_DIR,
-    CONTAINER_SPACK_TEMPLATES_DIR,
     get_dockerfile,
-    get_package_creation_script,
+    get_packager_dockerfile,
 )
 from .exceptions import SlurmFactoryError, SlurmFactoryStreamExecError
 from .spack_yaml import generate_yaml_string
@@ -41,7 +34,12 @@ console = Console()
 
 
 def _build_docker_image(
-    image_tag: str, dockerfile_content: str, cache_dir: str, verbose: bool = False, no_cache: bool = False
+    image_tag: str,
+    dockerfile_content: str,
+    cache_dir: str,
+    verbose: bool = False,
+    no_cache: bool = False,
+    target: str = "",
 ) -> None:
     """
     Build a Docker image from a Dockerfile string.
@@ -52,6 +50,7 @@ def _build_docker_image(
         cache_dir: Host directory for cache mounts
         verbose: Whether to show detailed output
         no_cache: Force a fresh build without using Docker cache
+        target: Build target stage in multi-stage builds (e.g., "builder")
 
     """
     console.print(f"[bold blue]Building Docker image {image_tag}...[/bold blue]")
@@ -61,6 +60,10 @@ def _build_docker_image(
     if no_cache:
         logger.debug("Building with --no-cache flag")
         console.print("[bold yellow]Building without cache (this may take longer)[/bold yellow]")
+    
+    if target:
+        logger.debug(f"Building target stage: {target}")
+        console.print(f"[dim]Building target stage: {target}[/dim]")
 
     process = None
     try:
@@ -78,6 +81,10 @@ def _build_docker_image(
         # Add --no-cache flag if requested
         if no_cache:
             cmd.insert(2, "--no-cache")
+        
+        # Add --target flag if specified
+        if target:
+            cmd.extend(["--target", target])
 
         if verbose:
             logger.debug(f"Docker build command: {' '.join(cmd)}")
@@ -129,192 +136,6 @@ def _build_docker_image(
         msg = f"Failed to build Docker image: {e}"
         logger.error(msg)
         console.print(f"[bold red]{escape(msg)}[/bold red]")
-        raise SlurmFactoryError(msg)
-
-
-def _run_docker_container(container_name: str, image_tag: str, cache_dir: str, verbose: bool = False) -> None:
-    """
-    Run a Docker container from an image with cache volume mounts.
-
-    Args:
-        container_name: Name for the container
-        image_tag: Image tag to run
-        cache_dir: Host directory for cache mounts
-        verbose: Whether to show detailed output
-
-    """
-    console.print(f"[bold blue]Starting Docker container {container_name}...[/bold blue]")
-    logger.debug(f"Running Docker container: {container_name} from {image_tag}")
-
-    try:
-        # Run container in detached mode with cache mounts
-        cmd = [
-            "docker",
-            "run",
-            "-d",  # Detached mode
-            "--name",
-            container_name,
-            # Mount cache directories
-            "-v",
-            f"{cache_dir}:{CONTAINER_BUILD_OUTPUT_DIR}",
-            image_tag,
-            "sleep",
-            "infinity",  # Keep container running
-        ]
-
-        if verbose:
-            logger.debug(f"Docker run command: {' '.join(cmd)}")
-            console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
-        if result.returncode != 0:
-            msg = f"Failed to start Docker container: {result.stderr}"
-            logger.error(msg)
-            console.print(f"[bold red]{escape(msg)}[/bold red]")
-            raise SlurmFactoryError(msg)
-
-        container_id = result.stdout.strip()
-        logger.debug(f"Container started with ID: {container_id}")
-        console.print(f"[bold green]✓ Container {container_name} started[/bold green]")
-
-    except subprocess.TimeoutExpired:
-        msg = "Docker container start timed out"
-        logger.error(msg)
-        console.print(f"[bold red]{msg}[/bold red]")
-        raise SlurmFactoryError(msg)
-    except Exception as e:
-        msg = f"Failed to start Docker container: {e}"
-        logger.error(msg)
-        console.print(f"[bold red]{escape(msg)}[/bold red]")
-        raise SlurmFactoryError(msg)
-
-
-def _exec_in_container(
-    container_name: str, command: list[str], description: str, verbose: bool = False
-) -> tuple[int, list[str], list[str]]:
-    """
-    Execute a command in a Docker container and stream output.
-
-    Args:
-        container_name: Name of the container
-        command: Command to execute as list
-        description: Description of the command for user
-        verbose: Whether to show detailed output
-
-    Returns:
-        Tuple of (returncode, stdout_lines, stderr_lines)
-
-    """
-    logger.debug(f"Executing in container {container_name}: {' '.join(command)}")
-    logger.debug(f"Description: {description}")
-
-    console.print(f"[bold blue]{description}[/bold blue]")
-
-    process = None
-    try:
-        # Build docker exec command
-        cmd = ["docker", "exec", container_name] + command
-
-        if verbose:
-            logger.debug(f"Docker exec command: {' '.join(cmd)}")
-
-        # Stream output to terminal in real-time
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Merge stderr into stdout
-            text=True,
-            bufsize=1,  # Line buffered
-        )
-
-        stdout_lines: list[str] = []
-
-        # Stream output line by line
-        if process.stdout:
-            for line in process.stdout:
-                line = line.rstrip()
-                if line:
-                    stdout_lines.append(line)
-                    # Always show output for build commands
-                    console.print(f"  {escape(line)}")
-                    logger.debug(f"Container exec: {line}")
-
-        # Wait for process to complete
-        returncode = process.wait(timeout=BUILD_TIMEOUT)
-
-        if returncode != 0:
-            msg = f"Command failed with exit code {returncode}"
-            logger.error(msg)
-            logger.error(f"Command was: {' '.join(command)}")
-            console.print(f"[bold red]{msg}[/bold red]")
-            # Show last 20 lines of output on failure
-            console.print("[bold red]Last lines of output:[/bold red]")
-            last_lines = stdout_lines[-20:] if len(stdout_lines) > 20 else stdout_lines
-            for line in last_lines:
-                if line.strip():
-                    console.print(f"[red]  {escape(line)}[/red]")
-            raise SlurmFactoryStreamExecError(msg)
-
-        logger.debug("Command completed successfully")
-        stderr_lines: list[str] = []
-        return (returncode, stdout_lines, stderr_lines)
-
-    except subprocess.TimeoutExpired:
-        msg = f"Command execution timed out after {BUILD_TIMEOUT} seconds"
-        logger.error(msg)
-        console.print(f"[bold red]{msg}[/bold red]")
-        if process:
-            process.kill()
-        raise SlurmFactoryStreamExecError(msg)
-    except Exception as e:
-        msg = f"Command execution failed: {e}"
-        logger.error(msg)
-        console.print(f"[bold red]{escape(msg)}[/bold red]")
-        raise SlurmFactoryStreamExecError(msg)
-
-
-def _copy_from_container(container_name: str, source_path: str, dest_path: str) -> None:
-    """
-    Copy files from a Docker container to the host.
-
-    Args:
-        container_name: Name of the container
-        source_path: Path inside the container
-        dest_path: Destination path on the host
-
-    """
-    logger.debug(f"Copying from container {container_name}:{source_path} to {dest_path}")
-
-    try:
-        cmd = ["docker", "cp", f"{container_name}:{source_path}", dest_path]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-
-        if result.returncode != 0:
-            msg = f"Failed to copy from container: {result.stderr}"
-            logger.error(msg)
-            raise SlurmFactoryError(msg)
-
-        logger.debug(f"Successfully copied {source_path} from container")
-
-    except subprocess.TimeoutExpired:
-        msg = "Copy from container timed out"
-        logger.error(msg)
-        raise SlurmFactoryError(msg)
-    except Exception as e:
-        msg = f"Failed to copy from container: {e}"
-        logger.error(msg)
         raise SlurmFactoryError(msg)
 
 
@@ -405,168 +226,6 @@ def _clear_cache_directory(cache_dir: str, verbose: bool = False) -> None:
         raise SlurmFactoryError(msg)
 
 
-def _stop_and_remove_container(container_name: str, verbose: bool = False) -> None:
-    """
-    Stop and remove a Docker container.
-
-    Args:
-        container_name: Name of the container
-        verbose: Whether to show detailed output
-
-    """
-    logger.debug(f"Stopping and removing container: {container_name}")
-
-    try:
-        # Stop container
-        subprocess.run(
-            ["docker", "stop", container_name],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
-        # Remove container
-        subprocess.run(
-            ["docker", "rm", container_name],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
-        if verbose:
-            console.print(f"[dim]Removed container {container_name}[/dim]")
-        logger.debug(f"Container {container_name} stopped and removed")
-
-    except Exception as e:
-        logger.warning(f"Failed to clean up container {container_name}: {e}")
-        # Don't raise - cleanup is best-effort
-
-
-def _copy_templates_to_container(container_name: str, verbose: bool = False) -> None:
-    """Copy template files into the container."""
-    templates_source = _get_data_file("templates")
-
-    if not templates_source.exists():
-        logger.warning(f"Templates directory not found at {templates_source}")
-        return
-
-    logger.debug(f"Copying template files from {templates_source} into container {container_name}")
-
-    # Create the templates directory in the container first
-    _exec_in_container(
-        container_name,
-        ["mkdir", "-p", CONTAINER_SPACK_TEMPLATES_DIR],
-        "Creating templates directory in container",
-        verbose=verbose,
-    )
-
-    # Copy each template file into the container
-    for template_file in templates_source.glob("*"):
-        if template_file.is_file():
-            destination_path = f"{CONTAINER_SPACK_TEMPLATES_DIR}/{template_file.name}"
-
-            # Use docker cp to copy files
-            try:
-                cmd = ["docker", "cp", str(template_file), f"{container_name}:{destination_path}"]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
-                if result.returncode != 0:
-                    logger.error(f"Failed to copy template file {template_file.name}: {result.stderr}")
-                    raise SlurmFactoryError(f"Failed to copy template: {template_file.name}")
-
-                logger.info(f"Copied {template_file.name} to container at {CONTAINER_SPACK_TEMPLATES_DIR}")
-            except Exception as e:
-                logger.error(f"Failed to copy template file {template_file.name}: {e}")
-                raise
-
-    logger.debug("Copied template files to container")
-
-
-def _copy_slurm_assets_to_container(container_name: str, verbose: bool = False) -> None:
-    """Copy slurm_assets files into the container."""
-    slurm_assets_source = _get_data_file("slurm_assets")
-
-    if not slurm_assets_source.exists():
-        logger.warning(f"Slurm assets directory not found at {slurm_assets_source}")
-        return
-
-    logger.debug(f"Copying slurm_assets files from {slurm_assets_source} into container {container_name}")
-
-    # Create the slurm_assets directory in the container first
-    container_assets_dir = f"{CONTAINER_SLURM_DIR}/slurm_assets"
-    _exec_in_container(
-        container_name,
-        ["mkdir", "-p", container_assets_dir],
-        "Creating slurm_assets directory in container",
-        verbose=verbose,
-    )
-
-    # Copy the entire slurm_assets directory structure into the container
-    try:
-        cmd = [
-            "docker",
-            "cp",
-            str(slurm_assets_source) + "/.",
-            f"{container_name}:{container_assets_dir}/",
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-        if result.returncode != 0:
-            logger.error(f"Failed to copy slurm_assets: {result.stderr}")
-            raise SlurmFactoryError("Failed to copy slurm_assets directory")
-
-        if verbose:
-            console.print("[dim]Copied slurm_assets to container[/dim]")
-
-    except subprocess.TimeoutExpired:
-        msg = "Copying slurm_assets timed out"
-        logger.error(msg)
-        raise SlurmFactoryError(msg)
-    except Exception as e:
-        if not isinstance(e, SlurmFactoryError):
-            logger.error(f"Failed to copy slurm_assets: {e}")
-            raise
-
-    logger.debug("Copied slurm_assets files to container")
-
-
-def _get_data_file(filename: str) -> Path:
-    """Get path to a data file, prioritizing development directory over installed locations."""
-    # First priority: Development mode (files in current directory)
-    # This ensures we use the latest files when developing
-    dev_path = Path.cwd() / "data" / filename
-    if dev_path.exists():
-        logger.debug(f"Using data file from development directory: {dev_path}")
-        return dev_path.resolve()
-
-    # Second priority: Virtual environment (for pip installed packages)
-    if hasattr(sys, "prefix") and sys.prefix != sys.base_prefix:
-        # We're in a virtual environment
-        venv_path = Path(sys.prefix) / "share" / "slurm-factory" / filename
-        if venv_path.exists():
-            logger.debug(f"Using data file from virtual environment: {venv_path}")
-            return venv_path.resolve()
-
-    # Third priority: System-wide installation locations
-    try:
-        # Check each site-packages directory for shared data
-        for site_dir in site.getsitepackages() + [site.getusersitepackages()]:
-            if site_dir:
-                installed_path = Path(site_dir) / "share" / "slurm-factory" / filename
-                if installed_path.exists():
-                    logger.debug(f"Using data file from site-packages: {installed_path}")
-                    return installed_path.resolve()
-
-                # Also check the parent directory of site-packages for share
-                parent_share = Path(site_dir).parent / "share" / "slurm-factory" / filename
-                if parent_share.exists():
-                    logger.debug(f"Using data file from parent share: {parent_share}")
-                    return parent_share.resolve()
-    except Exception:
-        pass
-
-    # If nothing found, return the development path anyway (will cause an error if file doesn't exist)
-    raise FileNotFoundError(f"Data file '{filename}' not found in any expected location")
 
 
 def create_slurm_package(
@@ -581,20 +240,40 @@ def create_slurm_package(
     verbose: bool = False,
     no_cache: bool = False,
 ) -> None:
-    """Create slurm package in a Docker container."""
+    """Create slurm package in a Docker container using a two-stage build."""
     console.print("[bold blue]Creating slurm package in Docker container...[/bold blue]")
 
     logger.debug(
         f"Building Slurm package: version={version}, gpu={gpu_support}, minimal={minimal}, verify={verify}, no_cache={no_cache}"
     )
 
+    builder_image_tag = f"{image_tag}-builder"
+    packager_image_tag = f"{image_tag}-packager"
+
     try:
         # If no_cache is enabled, clean up everything first
         if no_cache:
             console.print("[bold yellow]🗑️  Performing fresh build - cleaning all caches...[/bold yellow]")
             
-            # Remove old Docker image
+            # Remove old Docker images
             _remove_old_docker_image(image_tag, verbose=verbose)
+            _remove_old_docker_image(builder_image_tag, verbose=verbose)
+            _remove_old_docker_image(packager_image_tag, verbose=verbose)
+            
+            # Clear Docker build cache
+            console.print("[dim]Pruning Docker build cache...[/dim]")
+            try:
+                subprocess.run(
+                    ["docker", "builder", "prune", "-f"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+                logger.debug("Docker build cache cleared")
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Could not clear Docker build cache: {e}")
+                if verbose:
+                    console.print(f"[dim]Warning: Could not clear build cache: {escape(str(e))}[/dim]")
             
             # Clear the cache directory
             if cache_dir:
@@ -611,54 +290,167 @@ def create_slurm_package(
         )
         logger.debug(f"Generated Spack YAML configuration ({len(spack_yaml)} chars)")
 
+        # ========================================================================
+        # STAGE 1: Build the builder image (heavily cached)
+        # ========================================================================
+        console.print("[bold cyan]Stage 1/2: Building Slurm with Spack...[/bold cyan]")
+        
         # Generate Dockerfile with embedded spack.yaml
-        logger.debug("Generating Dockerfile")
+        logger.debug("Generating builder Dockerfile")
         dockerfile_content = get_dockerfile(spack_yaml)
         logger.debug(f"Generated Dockerfile ({len(dockerfile_content)} chars)")
 
-        # Build Docker image
-        _build_docker_image(image_tag, dockerfile_content, cache_dir, verbose=verbose, no_cache=no_cache)
-
-        # Run container
-        _run_docker_container(container_name, image_tag, cache_dir, verbose=verbose)
-
-        # Copy templates into container
-        logger.debug("Copying Lmod module templates to container...")
-        _copy_templates_to_container(container_name, verbose=verbose)
-
-        # Copy slurm_assets into container
-        logger.debug("Copying slurm_assets to container...")
-        _copy_slurm_assets_to_container(container_name, verbose=verbose)
-
-        # Execute package creation script
-        exec_script = get_package_creation_script(version=version)
-        logger.debug(f"Executing package creation script ({len(exec_script)} chars)")
-
-        _exec_in_container(
-            container_name,
-            BASH_HEADER + [exec_script],
-            f"Building Slurm {version} package",
+        # Build builder stage only
+        _build_docker_image(
+            builder_image_tag,
+            dockerfile_content,
+            cache_dir,
             verbose=verbose,
+            no_cache=no_cache,
+            target="builder",  # Only build up to builder stage
         )
-        logger.debug("Successfully completed package creation script")
+        
+        console.print("[bold green]✓ Builder stage complete (cached for future builds)[/bold green]")
+
+        # ========================================================================
+        # STAGE 2: Build the packager image (invalidates on config changes)
+        # ========================================================================
+        console.print("[bold cyan]Stage 2/2: Packaging with configuration files...[/bold cyan]")
+        
+        # Generate packager Dockerfile that builds FROM builder
+        logger.debug("Generating packager Dockerfile")
+        packager_dockerfile = get_packager_dockerfile(builder_image_tag, version)
+        logger.debug(f"Generated packager Dockerfile ({len(packager_dockerfile)} chars)")
+
+        # Build packager image with config files from host
+        # This will invalidate when data/slurm_assets or data/templates change
+        _build_docker_image(
+            packager_image_tag,
+            packager_dockerfile,
+            cache_dir,
+            verbose=verbose,
+            no_cache=False,  # Allow caching for packager stage
+        )
+        
+        console.print("[bold green]✓ Packager stage complete[/bold green]")
+
+        # Tag the final packager image as the main image tag for compatibility
+        try:
+            subprocess.run(
+                ["docker", "tag", packager_image_tag, image_tag],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.debug(f"Tagged {packager_image_tag} as {image_tag}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Could not tag packager image: {e}")
+
+        # Extract the tarball from the packager image
+        if cache_dir:
+            console.print("[bold cyan]Extracting tarball from image...[/bold cyan]")
+            extract_slurm_package_from_image(
+                image_tag=packager_image_tag,
+                output_dir=cache_dir,
+                version=version,
+                verbose=verbose,
+            )
 
         console.print("[bold green]✓ Slurm package built successfully[/bold green]")
-
-        # Cleanup container (but keep image for potential reuse)
-        _stop_and_remove_container(container_name, verbose=verbose)
 
     except SlurmFactoryStreamExecError as e:
         msg = f"Build failed: {e}"
         logger.error(msg)
         console.print(f"[bold red]{escape(msg)}[/bold red]")
-        # Leave container running for debugging
-        console.print(f"[yellow]Container {container_name} left running for debugging[/yellow]")
-        console.print(f"[yellow]Connect with: docker exec -it {container_name} bash[/yellow]")
         raise SlurmFactoryError(msg)
     except Exception as e:
         msg = f"Failed to create slurm package: {e}"
         logger.error(msg)
         console.print(f"[bold red]{escape(msg)}[/bold red]")
-        # Cleanup on unexpected errors
-        _stop_and_remove_container(container_name, verbose=verbose)
         raise SlurmFactoryError(msg)
+
+
+def extract_slurm_package_from_image(
+    image_tag: str,
+    output_dir: str,
+    version: str,
+    verbose: bool = False,
+) -> None:
+    """
+    Extract the Slurm package tarball from a packager Docker image.
+
+    Args:
+        image_tag: Tag of the packager Docker image
+        output_dir: Directory to extract the tarball to
+        version: Slurm version (for finding the correct tarball)
+        verbose: Whether to show detailed output
+
+    """
+    console.print(f"[bold blue]Extracting Slurm package from image {image_tag}...[/bold blue]")
+    logger.debug(f"Extracting package from image {image_tag} to {output_dir}")
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    container_name = f"slurm-factory-extract-{version.replace('.', '-')}"
+    tarball_name = f"slurm-{version}-software.tar.gz"
+    container_tarball_path = f"/opt/slurm/build_output/{tarball_name}"
+
+    try:
+        # Create a temporary container from the image
+        logger.debug(f"Creating temporary container {container_name}")
+        result = subprocess.run(
+            ["docker", "create", "--name", container_name, image_tag],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            msg = f"Failed to create container for extraction: {result.stderr}"
+            logger.error(msg)
+            console.print(f"[bold red]{escape(msg)}[/bold red]")
+            raise SlurmFactoryError(msg)
+
+        # Copy the tarball from the container
+        logger.debug(f"Copying {container_tarball_path} from container to {output_dir}")
+        console.print(f"[dim]Copying tarball to {output_dir}...[/dim]")
+
+        result = subprocess.run(
+            ["docker", "cp", f"{container_name}:{container_tarball_path}", str(output_path)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if result.returncode != 0:
+            msg = f"Failed to copy tarball from container: {result.stderr}"
+            logger.error(msg)
+            console.print(f"[bold red]{escape(msg)}[/bold red]")
+            raise SlurmFactoryError(msg)
+
+        console.print(f"[bold green]✓ Extracted {tarball_name} to {output_dir}[/bold green]")
+        logger.debug(f"Successfully extracted package to {output_dir}/{tarball_name}")
+
+    except subprocess.TimeoutExpired:
+        msg = "Extraction timed out"
+        logger.error(msg)
+        console.print(f"[bold red]{msg}[/bold red]")
+        raise SlurmFactoryError(msg)
+    except Exception as e:
+        msg = f"Failed to extract package: {e}"
+        logger.error(msg)
+        console.print(f"[bold red]{escape(msg)}[/bold red]")
+        raise SlurmFactoryError(msg)
+    finally:
+        # Clean up the temporary container
+        try:
+            subprocess.run(
+                ["docker", "rm", container_name],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            logger.debug(f"Removed temporary container {container_name}")
+        except Exception as e:
+            logger.warning(f"Failed to remove temporary container: {e}")

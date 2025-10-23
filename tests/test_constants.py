@@ -50,7 +50,7 @@ class TestSlurmVersions:
     def test_slurm_versions_mapping(self):
         """Test that version mappings are correct."""
         # Test known mappings (updated for actual format)
-        assert SLURM_VERSIONS["25.05"] == "25-05-3-1"
+        assert SLURM_VERSIONS["25.05"] == "25-05-4-1"
         assert SLURM_VERSIONS["24.11"] == "24-11-6-1"
         assert SLURM_VERSIONS["23.11"] == "23-11-11-1"
         assert SLURM_VERSIONS["23.02"] == "23-02-7-1"
@@ -273,8 +273,8 @@ class TestConstantValidation:
                 assert not path.endswith("/"), f"Path has trailing slash: {path}"
 
     def test_build_cache_output_relationship(self):
-        """Test relationship between cache directory and build output."""
-        assert CONTAINER_BUILD_OUTPUT_DIR.startswith(CONTAINER_CACHE_DIR)
+        """Test relationship between SLURM directory and build output."""
+        assert CONTAINER_BUILD_OUTPUT_DIR.startswith(CONTAINER_SLURM_DIR)
 
 
 if __name__ == "__main__":
