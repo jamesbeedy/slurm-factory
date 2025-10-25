@@ -159,8 +159,6 @@ def get_spack_build_script() -> str:
         rm -f spack.lock && \\
         spack concretize -j \\$(nproc) -f --fresh && \\
         spack install -j\\$(nproc) --only-concrete -f --verbose -p 4 --no-cache && \\
-        mkdir -p {CONTAINER_SLURM_DIR}/view && \\
-        spack view --verbose symlink -i {CONTAINER_SLURM_DIR}/view slurm && \\
         spack module lmod refresh --delete-tree -y && \\
         spack module lmod refresh -y && \\
         mkdir -p {CONTAINER_SLURM_DIR}/modules && \\
@@ -181,7 +179,24 @@ def get_package_tarball_script(modulerc_script: str, version: str) -> str:
     """
     return textwrap.dedent(f"""\
         set -e && \\
-        rsync -aL --ignore-errors {CONTAINER_SLURM_DIR}/view/ {CONTAINER_SLURM_DIR}/software/ && \\
+        [ -d "{CONTAINER_SLURM_DIR}/view" ] || {{ echo "ERROR: Spack view was not created at {CONTAINER_SLURM_DIR}/view"; exit 1; }} && \\
+        MISSING_LIBS="" && \\
+        for lib in libmunge.so libjwt.so libjansson.so; do \\
+            if ! find {CONTAINER_SLURM_DIR}/view/lib* -name "$lib*" 2>/dev/null | grep -q .; then \\
+                echo "WARNING: $lib not found in view" && \\
+                MISSING_LIBS="$MISSING_LIBS $lib"; \\
+            fi; \\
+        done && \\
+        if [ -n "$MISSING_LIBS" ]; then \\
+            echo "WARNING: Some expected libraries/binaries are missing: $MISSING_LIBS" && \\
+            echo "Continuing anyway - they may not be required for this configuration"; \\
+        else \\
+            echo "DEBUG: All critical libraries verified in view"; \\
+        fi && \\
+        echo "DEBUG: Merging view into software directory..." && \\
+        echo "Copying Spack view contents to software directory (resolving symlinks)..." && \\
+        echo "DEBUG: Copying from {CONTAINER_SLURM_DIR}/view/* to {CONTAINER_SLURM_DIR}/software/" && \\
+        cp -rL {CONTAINER_SLURM_DIR}/view/* {CONTAINER_SLURM_DIR}/software/ && \\
         mkdir -p {CONTAINER_SLURM_DIR}/redistributable && \\
         [ -d "{CONTAINER_SLURM_DIR}/software" ] || {{ echo "ERROR: Spack install tree not found"; exit 1; }} && \\
         cd {CONTAINER_SLURM_DIR}/software && \\
