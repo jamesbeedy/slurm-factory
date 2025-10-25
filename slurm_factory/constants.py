@@ -16,6 +16,7 @@
 
 import textwrap
 from enum import Enum
+from pathlib import Path
 
 # Mapping of user-facing version strings to Spack package versions
 SLURM_VERSIONS = {
@@ -71,481 +72,231 @@ BASH_HEADER = ["bash", "-c"]
 
 def get_module_template_content() -> str:
     """Return the embedded Lmod module template content."""
-    import pathlib
-    
-    template_path = pathlib.Path(__file__).parent.parent / "data" / "templates" / "relocatable_modulefile.lua"
+    template_path = Path(__file__).parent.parent / "data" / "templates" / "relocatable_modulefile.lua"
     return template_path.read_text()
 
 
-def get_dockerfile(spack_yaml_content: str) -> str:
+def get_modulerc_creation_script(module_dir: str, modulerc_path: str) -> str:
+    """
+    Generate bash script to create the .modulerc.lua file.
+    
+    Args:
+        module_dir: Directory containing the .lua module files
+        modulerc_path: Full path where .modulerc.lua should be created
+        
+    Returns:
+        Single-line bash script as a string
+    """
+    # Use printf with %s for proper escaping, avoiding single quotes in echo
+    # This avoids issues when embedded in complex shell scripts
+    return f'MODULE_LUA_FILE=$(ls {module_dir}/*.lua | head -1) && [ -n "$MODULE_LUA_FILE" ] && MODULE_VERSION=$(basename "$MODULE_LUA_FILE" .lua) && printf "module_version(\\"%s\\",\\"default\\")\\n" "$MODULE_VERSION" > {modulerc_path}'
+
+
+def get_install_system_deps_script() -> str:
+    """Generate script to install system dependencies for Spack."""
+    return textwrap.dedent("""\
+        apt-get update && apt-get upgrade -y && \\
+        apt-get install -y \\
+        git \\
+        build-essential \\
+        python3 \\
+        unzip \\
+        gfortran \\
+        autoconf \\
+        automake \\
+        libtool \\
+        bison \\
+        flex \\
+        cmake \\
+        make \\
+        m4 \\
+        pkg-config \\
+        ccache \\
+        findutils \\
+        diffutils \\
+        tar \\
+        gawk \\
+        gettext \\
+        lmod \\
+        ca-certificates \\
+        wget && \\
+        apt-get clean && rm -rf /var/lib/apt/lists/*
+    """).strip()
+
+
+def get_install_spack_script() -> str:
+    """Generate script to install Spack."""
+    return textwrap.dedent(
+        """\
+        git clone --depth 1 --branch v1.0.0 https://github.com/spack/spack.git /opt/spack && \\
+        chown -R root:root /opt/spack && chmod -R a+rX /opt/spack
+    """).strip()
+
+
+def get_spack_profile_script() -> str:
+    """Generate script to set up Spack profile."""
+    return textwrap.dedent("""\
+        echo 'source /opt/spack/share/spack/setup-env.sh' >> /etc/profile.d/spack.sh && \\
+        chmod 644 /etc/profile.d/spack.sh
+    """).strip()
+
+
+def get_create_directories_script() -> str:
+    """Generate script to create required directories."""
+    return textwrap.dedent(f"""\
+        mkdir -p {CONTAINER_SPACK_PROJECT_DIR} \\
+                 {CONTAINER_SPACK_TEMPLATES_DIR} \\
+                 {CONTAINER_SLURM_DIR} \\
+                 {CONTAINER_SPACK_CACHE_DIR}
+    """).strip()
+
+
+def get_spack_build_script() -> str:
+    """Generate script to build Slurm with Spack."""
+    return textwrap.dedent(f"""\
+        bash -c "source {SPACK_SETUP_SCRIPT} && \\
+        spack env activate . && \\
+        rm -f spack.lock && \\
+        spack concretize -j \\$(nproc) -f --fresh && \\
+        spack install -j\\$(nproc) --only-concrete -f --verbose -p 4 --no-cache && \\
+        mkdir -p {CONTAINER_SLURM_DIR}/view && \\
+        spack view --verbose symlink -i {CONTAINER_SLURM_DIR}/view slurm && \\
+        spack module lmod refresh --delete-tree -y && \\
+        spack module lmod refresh -y && \\
+        mkdir -p {CONTAINER_SLURM_DIR}/modules && \\
+        SPACK_ROOT_PATH=\\$(spack location -r) && \\
+        for f in \\$(find \\$SPACK_ROOT_PATH/share/spack/lmod -type f -name '*.lua'); do \\
+            case \\$f in *slurm*) cp \\"\\$f\\" {CONTAINER_SLURM_DIR}/modules/;; esac; \\
+        done && \\
+        spack gc -y"
+    """).strip()
+
+
+def get_package_tarball_script(modulerc_script: str, version: str) -> str:
+    """Generate script to package everything into a tarball.
+    
+    Args:
+        modulerc_script: The script to create .modulerc.lua file
+        version: Slurm version (e.g., "25.05") for the tarball filename
+    """
+    return textwrap.dedent(f"""\
+        set -e && \\
+        rsync -aL --ignore-errors {CONTAINER_SLURM_DIR}/view/ {CONTAINER_SLURM_DIR}/software/ && \\
+        mkdir -p {CONTAINER_SLURM_DIR}/redistributable && \\
+        [ -d "{CONTAINER_SLURM_DIR}/software" ] || {{ echo "ERROR: Spack install tree not found"; exit 1; }} && \\
+        cd {CONTAINER_SLURM_DIR}/software && \\
+        find . -name "include" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
+        find . -path "*/lib/pkgconfig" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
+        find . -path "*/share/doc" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
+        find . -path "*/share/man" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
+        find . -path "*/share/info" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
+        find . -name "__pycache__" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
+        find . -name "*.pyc" -delete 2>/dev/null || true && \\
+        find . -name "*.a" -delete 2>/dev/null || true && \\
+        mkdir -p {CONTAINER_SLURM_DIR}/software/assets && \\
+        cp -r {CONTAINER_SLURM_DIR}/slurm_assets {CONTAINER_SLURM_DIR}/software/assets/ && \\
+        mkdir -p {CONTAINER_SLURM_DIR}/software/assets/modules/slurm && \\
+        cp {CONTAINER_SLURM_DIR}/modules/*.lua {CONTAINER_SLURM_DIR}/software/assets/modules/slurm/ && \\
+        {modulerc_script} && \\
+        tar -czf {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz -C {CONTAINER_SLURM_DIR} software/ && \\
+        mkdir -p {CONTAINER_BUILD_OUTPUT_DIR} && \\
+        cp {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz {CONTAINER_BUILD_OUTPUT_DIR}/
+    """).strip()
+
+
+def get_dockerfile(spack_yaml_content: str, version: str = "25.05") -> str:
     """
     Generate a multi-stage Dockerfile for building Slurm packages.
     
-    Stage 1 (builder): Compiles Slurm with Spack - heavily cached
-    Stage 2 (packager): Creates tarball with assets - invalidates on config changes
+    Stage 1 (init): Ubuntu + system deps + Spack (heavily cached)
+    Stage 2 (builder): Runs spack install, creates view, generates modules (cached on spack.yaml)
+    Stage 3 (packager): Copies slurm_assets and creates tarball (invalidates on asset changes)
 
     Args:
         spack_yaml_content: The complete spack.yaml content as a string
 
     Returns:
-        A complete Dockerfile as a string
-
+        A complete multi-stage Dockerfile as a string
     """
+    # Generate all script components
+    install_deps_script = get_install_system_deps_script()
+    install_spack_script = get_install_spack_script()
+    spack_profile_script = get_spack_profile_script()
+    create_dirs_script = get_create_directories_script()
+    module_template_content = get_module_template_content()
+    spack_build_script = get_spack_build_script()
+    
+    # Generate the modulerc creation script
+    modulerc_script = get_modulerc_creation_script(
+        module_dir=f"{CONTAINER_SLURM_DIR}/software/assets/modules/slurm",
+        modulerc_path=f"{CONTAINER_SLURM_DIR}/software/assets/modules/slurm/.modulerc.lua"
+    )
+    
+    # Generate the packaging script
+    package_script = get_package_tarball_script(modulerc_script, version)
+    
     return textwrap.dedent(
         f"""\
-        # Slurm Factory Build Container - Multi-Stage Build
-        # Generated by slurm-factory - DO NOT EDIT MANUALLY
-        
-        # ============================================================================
-        # Stage 1: Builder - Compile Slurm with Spack (heavily cached)
-        # ============================================================================
-        FROM ubuntu:24.04 AS builder
+# Slurm Factory Build Container - Multi-Stage Build
+# Generated by slurm-factory - DO NOT EDIT MANUALLY
 
-        # Prevent interactive prompts during package installation
-        ENV DEBIAN_FRONTEND=noninteractive
-        ENV TZ=UTC
+# ========================================================================
+# Stage 1: Init - Base system with Spack (heavily cached)
+# ========================================================================
+FROM ubuntu:24.04 AS init
 
-        # Install system dependencies
-        # Based on lxd-profile.yaml cloud-init configuration
-        RUN apt-get update && apt-get upgrade -y && \\
-            apt-get install -y \\
-            # Essential build system and version control
-            git \\
-            build-essential \\
-            python3 \\
-            unzip \\
-            gfortran \\
-            # Core build tools (needed by Spack build process)
-            autoconf \\
-            automake \\
-            libtool \\
-            bison \\
-            flex \\
-            cmake \\
-            make \\
-            m4 \\
-            pkg-config \\
-            ccache \\
-            # System utilities (used by Spack/autotools)
-            findutils \\
-            diffutils \\
-            tar \\
-            gawk \\
-            gettext \\
-            # Module system
-            lmod \\
-            # Additional utilities
-            ca-certificates \\
-            curl \\
-            wget && \\
-            apt-get clean && \\
-            rm -rf /var/lib/apt/lists/*
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
 
-        # Install Spack v1.0.0 into /opt/spack
-        RUN git clone --depth 1 --branch v1.0.0 https://github.com/spack/spack.git /opt/spack && \\
-            chown -R root:root /opt/spack && \\
-            chmod -R a+rX /opt/spack
+# Install minimal system dependencies for Spack
+RUN {install_deps_script}
 
-        # Set up Spack environment
-        ENV SPACK_ROOT=/opt/spack
-        ENV PATH=$SPACK_ROOT/bin:$PATH
-        RUN echo 'source /opt/spack/share/spack/setup-env.sh' >> /etc/profile.d/spack.sh && \\
-            chmod 644 /etc/profile.d/spack.sh
+# Install Spack v1.0.0
+RUN {install_spack_script}
 
-        # Create required directories
-        RUN mkdir -p {CONTAINER_SPACK_PROJECT_DIR} \\
-                     {CONTAINER_SPACK_TEMPLATES_DIR} \\
-                     {CONTAINER_SLURM_DIR} \\
-                     {CONTAINER_SPACK_CACHE_DIR}
+ENV SPACK_ROOT=/opt/spack
+ENV PATH=$SPACK_ROOT/bin:$PATH
+RUN {spack_profile_script}
 
-        # Copy spack.yaml configuration
-        # This file is dynamically generated and contains the build specification
-        RUN cat > {CONTAINER_SPACK_PROJECT_DIR}/spack.yaml << 'SPACK_YAML_EOF'
+# Create required directories
+RUN {create_dirs_script}
+
+# ========================================================================
+# Stage 2: Builder - Compile Slurm (cached on spack.yaml changes)
+# ========================================================================
+FROM init AS builder
+
+# Copy spack.yaml (invalidates cache when build spec changes)
+RUN cat > {CONTAINER_SPACK_PROJECT_DIR}/spack.yaml << 'SPACK_YAML_EOF'
 {spack_yaml_content}
 SPACK_YAML_EOF
 
-        # Create module template directory and embed template content
-        # This is needed for module generation during the build
-        RUN mkdir -p {CONTAINER_SPACK_TEMPLATES_DIR}/modules && \\
-            cat > {CONTAINER_SPACK_TEMPLATES_DIR}/modules/relocatable_modulefile.lua << 'MODULE_TEMPLATE_EOF'
-{get_module_template_content()}
+# Copy module template (Spack expects it in modules/ subdirectory)
+RUN mkdir -p {CONTAINER_SPACK_TEMPLATES_DIR}/modules
+RUN cat > {CONTAINER_SPACK_TEMPLATES_DIR}/modules/relocatable_modulefile.lua << 'MODULE_TEMPLATE_EOF'
+{module_template_content}
 MODULE_TEMPLATE_EOF
 
-        # Set working directory
-        WORKDIR {CONTAINER_SPACK_PROJECT_DIR}
-
-        # Build Slurm with Spack - this is the expensive operation that gets cached
-        RUN bash -c "source {SPACK_SETUP_SCRIPT} && \\
-            spack env activate . && \\
-            echo 'Removing stale lock file...' && \\
-            rm -f spack.lock && \\
-            echo 'Starting Spack concretization...' && \\
-            spack concretize -j $(nproc) -f --fresh && \\
-            echo 'Installing Slurm and dependencies...' && \\
-            spack install -j$(nproc) --only-concrete -f --verbose -p 4 --no-cache && \\
-            echo 'Running garbage collection...' && \\
-            spack gc -y && \\
-            echo 'Slurm build complete!'"
-
-        # Default CMD for builder stage
-        CMD ["/bin/bash"]
-        """
-    )
+WORKDIR {CONTAINER_SPACK_PROJECT_DIR}
+# Build Slurm: install + create view + generate modules
+RUN {spack_build_script}
 
 
-def get_packager_dockerfile(builder_image_tag: str, version: str) -> str:
-    """
-    Generate a Dockerfile for the packager stage that builds on top of the builder image.
-    
-    This separate stage allows the builder to be cached while config changes invalidate
-    only the packager stage.
 
-    Args:
-        builder_image_tag: The Docker image tag of the builder stage
-        version: The Slurm version being packaged
+# ========================================================================
+# Stage 3: Packager - Create tarball (invalidates on asset changes)
+# ========================================================================
+FROM builder AS packager
 
-    Returns:
-        A Dockerfile for the packager stage
+# Use bash as the shell for RUN commands in this stage
+SHELL ["/bin/bash", "-c"]
 
-    """
-    return textwrap.dedent(
-        f"""\
-        # Slurm Factory Packager Container
-        # Generated by slurm-factory - DO NOT EDIT MANUALLY
-        # This stage builds on the cached builder image
-        
-        FROM {builder_image_tag} AS packager
+# Copy configuration assets (invalidates cache when they change)
+COPY data/slurm_assets/ {CONTAINER_SLURM_DIR}/slurm_assets/
 
-        WORKDIR {CONTAINER_SPACK_PROJECT_DIR}
+# Package everything into single tarball
+RUN {package_script}
 
-        # Copy configuration assets (this invalidates cache when they change)
-        # The template is already in the builder image, but slurm_assets needs to be copied
-        COPY data/slurm_assets/ {CONTAINER_SLURM_DIR}/slurm_assets/
-
-        # Set shell to bash for RUN commands
-        SHELL ["/bin/bash", "-c"]
-
-        # Run the packaging script as part of build
-        # This creates the view, copies assets, and creates the tarball
-        RUN source {SPACK_SETUP_SCRIPT} && \\
-            spack env activate . && \\
-            set -e && \\
-            echo 'Starting package creation...' && \\
-            mkdir -p {CONTAINER_SLURM_DIR}/redistributable {CONTAINER_SLURM_DIR}/software && \\
-            echo 'Creating Spack view...' && \\
-            spack env view regenerate && \\
-            echo 'Copying Spack view contents to software directory...' && \\
-            cp -rL {CONTAINER_SLURM_DIR}/view/* {CONTAINER_SLURM_DIR}/software/ && \\
-            if [ ! -f "{CONTAINER_SLURM_DIR}/software/lib/libmysqlclient.so.21" ]; then \\
-                MYSQL_INSTALL_DIR=$(spack location -i mysql) && \\
-                if [ -d "$MYSQL_INSTALL_DIR/lib" ]; then \\
-                    cp -L "$MYSQL_INSTALL_DIR/lib/libmysqlclient.so"* \\
-                        {CONTAINER_SLURM_DIR}/software/lib/ 2>/dev/null || true; \\
-                fi; \\
-            fi && \\
-            cd {CONTAINER_SLURM_DIR}/software && \\
-            find . -name "include" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
-            find . -path "*/lib/pkgconfig" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
-            find . -path "*/share/doc" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
-            find . -path "*/share/man" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
-            find . -path "*/share/info" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
-            find . -name "__pycache__" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
-            find . -name "*.pyc" -delete 2>/dev/null || true && \\
-            find . -name "*.a" -delete 2>/dev/null || true && \\
-            cd {CONTAINER_SPACK_PROJECT_DIR} && \\
-            echo "Packaging Spack-generated relocatable modules..." && \\
-            mkdir -p {CONTAINER_SLURM_DIR}/modules && \\
-            spack module lmod refresh --delete-tree -y && \\
-            spack module lmod refresh -y && \\
-            MODULE_FILE=$(spack module lmod find slurm 2>/dev/null || echo "") && \\
-            if [ -n "$MODULE_FILE" ]; then \\
-                SPACK_ROOT=$(spack location -r) && \\
-                MODULE_PATH=$(find "$SPACK_ROOT" -name "*.lua" -path "*$MODULE_FILE*" 2>/dev/null | head -1) && \\
-                if [ -n "$MODULE_PATH" ] && [ -f "$MODULE_PATH" ]; then \\
-                    cp "$MODULE_PATH" {CONTAINER_SLURM_DIR}/modules/; \\
-                fi; \\
-            fi && \\
-            mkdir -p {CONTAINER_SLURM_DIR}/software/assets/slurm && \\
-            if [ -d "{CONTAINER_SLURM_DIR}/modules" ] && [ "$(ls -A {CONTAINER_SLURM_DIR}/modules 2>/dev/null)" ]; then \\
-                cp -r {CONTAINER_SLURM_DIR}/modules/* {CONTAINER_SLURM_DIR}/software/assets/slurm/ && \\
-                MODULE_LUA_FILE=$(ls {CONTAINER_SLURM_DIR}/software/assets/slurm/*.lua | head -1) && \\
-                if [ -n "$MODULE_LUA_FILE" ]; then \\
-                    MODULE_VERSION=$(basename "$MODULE_LUA_FILE" .lua) && \\
-                    echo 'module_version("'$MODULE_VERSION'","default")' > {CONTAINER_SLURM_DIR}/software/assets/slurm/.modulerc.lua; \\
-                fi; \\
-            fi && \\
-            if [ -d "{CONTAINER_SLURM_DIR}/slurm_assets" ]; then \\
-                cp -r {CONTAINER_SLURM_DIR}/slurm_assets {CONTAINER_SLURM_DIR}/software/assets/; \\
-            fi && \\
-            tar -czf {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz \\
-                -C {CONTAINER_SLURM_DIR} software/ && \\
-            mkdir -p {CONTAINER_BUILD_OUTPUT_DIR} && \\
-            cp {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz \\
-                {CONTAINER_BUILD_OUTPUT_DIR}/ && \\
-            echo 'Package creation complete!'
-
-        CMD ["/bin/bash"]
-        """
-    )
-
-
-def get_package_creation_script(version: str) -> str:
-    """Return the package creation script."""
-    return textwrap.dedent(
-        f"""
-        set -e
-        set -x  # Enable debug output for all commands
-
-        echo "DEBUG: Starting package creation script for Slurm version {version}"
-        echo "DEBUG: Working directory: $(pwd)"
-        echo "DEBUG: Available disk space: $(df -h /opt)"
-
-        cd {CONTAINER_SPACK_PROJECT_DIR}
-        echo "DEBUG: Changed to Spack project directory: $(pwd)"
-
-        source {SPACK_SETUP_SCRIPT}
-        spack env activate .
-        echo "DEBUG: Spack environment activated"
-
-        echo 'Setting up Spack environment and build cache...'
-        echo 'Generated dynamic Spack configuration'
-        echo 'Binary cache mirrors configured:'
-        spack mirror list
-
-        echo "DEBUG: Starting concretization process..."
-        echo 'Removing any stale lock file to ensure fresh concretization...'
-        rm -f spack.lock
-        echo 'Starting Spack concretization...'
-        spack concretize -j $(nproc) -f --fresh
-
-        echo "DEBUG: Concretization completed, starting installation..."
-        echo 'Installing ALL dependencies from dynamic configuration...'
-        echo 'Building everything from source (no binary cache in single-stage builds)...'
-        # Use --only-concrete to ensure we only install what was concretized, without re-concretization
-        spack install -j$(nproc) --only-concrete -f --verbose -p 4 --no-cache
-
-        echo "DEBUG: Verifying Slurm installation..."
-        if ! spack find --format "{{hash:7}}" slurm | grep -qE "^[a-z0-9]{{7}}$"; then
-            echo "ERROR: Slurm package was not installed!"
-            echo "Installed packages:"
-            spack find
-            exit 1
-        fi
-        echo "DEBUG: Slurm installation verified"
-
-        echo "DEBUG: Installation completed, running garbage collection..."
-        spack gc -y
-
-        echo "DEBUG: Creating redistributable package structure..."
-        echo 'Creating redistributable package structure...'
-        mkdir -p {CONTAINER_SLURM_DIR}/redistributable
-
-        echo "DEBUG: Verifying view was created successfully..."
-        if [ ! -d "{CONTAINER_SLURM_DIR}/view" ]; then
-            echo "ERROR: Spack view was not created at {CONTAINER_SLURM_DIR}/view"
-            exit 1
-        fi
-        echo "DEBUG: View exists and will be used for packaging"
-
-        # The view already contains everything we need in a FHS-compliant structure
-        # Spack has already created hardlinks and set proper RPATHs
-        # We just need to verify critical libraries are present
-
-        echo "DEBUG: Verifying critical libraries in view..."
-        MISSING_LIBS=""
-
-        # Check for Slurm binaries
-        if [ ! -f "{CONTAINER_SLURM_DIR}/view/bin/slurmctld" ]; then
-            echo "WARNING: slurmctld not found in view"
-            MISSING_LIBS="$MISSING_LIBS slurmctld"
-        fi
-
-        # Check for critical libraries that Slurm needs
-        for lib in libmunge.so libjwt.so libjansson.so; do
-            if ! find {CONTAINER_SLURM_DIR}/view/lib* -name "$lib*" 2>/dev/null | grep -q .; then
-                echo "WARNING: $lib not found in view"
-                MISSING_LIBS="$MISSING_LIBS $lib"
-            fi
-        done
-
-        if [ -n "$MISSING_LIBS" ]; then
-            echo "WARNING: Some expected libraries/binaries are missing: $MISSING_LIBS"
-            echo "Continuing anyway - they may not be required for this configuration"
-        else
-            echo "DEBUG: All critical libraries verified in view"
-        fi
-
-        echo "DEBUG: Merging view into software directory..."
-        echo "Copying Spack view contents to software directory (resolving symlinks)..."
-        echo "DEBUG: Copying from {CONTAINER_SLURM_DIR}/view/* to {CONTAINER_SLURM_DIR}/software/"
-        cp -rL {CONTAINER_SLURM_DIR}/view/* {CONTAINER_SLURM_DIR}/software/
-
-        echo "DEBUG: Checking for MySQL libraries..."
-        echo "Ensuring MySQL client libraries are included..."
-        # Check if MySQL libraries are missing from the view and add them manually if needed
-        if [ ! -f "{CONTAINER_SLURM_DIR}/software/lib/libmysqlclient.so.21" ]; then
-            echo "DEBUG: MySQL libraries missing from view, adding them manually..."
-            echo "MySQL libraries missing from view, adding them manually..."
-            MYSQL_INSTALL_DIR=$(spack location -i mysql)
-            echo "DEBUG: MySQL installation directory: $MYSQL_INSTALL_DIR"
-            if [ -d "$MYSQL_INSTALL_DIR/lib" ]; then
-                echo "DEBUG: Copying MySQL libraries from $MYSQL_INSTALL_DIR/lib/"
-                cp -L "$MYSQL_INSTALL_DIR/lib/libmysqlclient.so"* \
-                    {CONTAINER_SLURM_DIR}/software/lib/ 2>/dev/null || true
-                echo "MySQL client libraries copied successfully"
-                echo "DEBUG: MySQL library copy completed"
-            else
-                echo "Warning: MySQL installation directory not found"
-                echo "DEBUG: MySQL installation directory $MYSQL_INSTALL_DIR/lib not found"
-            fi
-        else
-            echo "MySQL libraries already present in view"
-            echo "DEBUG: MySQL libraries already present in view"
-        fi
-
-        echo "DEBUG: Starting software cleanup process..."
-        echo "Performing lightweight cleanup of development files from software directory..."
-        cd {CONTAINER_SLURM_DIR}/software
-
-        # Show original size
-        ORIGINAL_SIZE=$(du -sh . | cut -f1)
-        echo "Original software size: $ORIGINAL_SIZE"
-        echo "DEBUG: Original software size: $ORIGINAL_SIZE"
-
-        # Light cleanup - remove development files not needed at runtime
-        echo "DEBUG: Removing include directories..."
-        find . -name "include" -type d -exec rm -rf {{}} + 2>/dev/null || true
-        echo "DEBUG: Removing pkgconfig directories..."
-        find . -path "*/lib/pkgconfig" -type d -exec rm -rf {{}} + 2>/dev/null || true
-        echo "DEBUG: Removing documentation directories..."
-        find . -path "*/share/doc" -type d -exec rm -rf {{}} + 2>/dev/null || true
-        find . -path "*/share/man" -type d -exec rm -rf {{}} + 2>/dev/null || true
-        find . -path "*/share/info" -type d -exec rm -rf {{}} + 2>/dev/null || true
-        echo "DEBUG: Removing Python cache files..."
-        find . -name "__pycache__" -type d -exec rm -rf {{}} + 2>/dev/null || true
-        find . -name "*.pyc" -delete 2>/dev/null || true
-        echo "DEBUG: Removing static libraries..."
-        find . -name "*.a" -delete 2>/dev/null || true
-
-        # Show size after cleanup
-        PRUNED_SIZE=$(du -sh . | cut -f1)
-        echo "Cleaned software size: $PRUNED_SIZE (reduced from $ORIGINAL_SIZE)"
-        echo "DEBUG: Cleaned software size: $PRUNED_SIZE (reduced from $ORIGINAL_SIZE)"
-
-        echo "DEBUG: Starting module packaging process..."
-        echo 'Packaging Spack-generated relocatable modules...'
-        mkdir -p {CONTAINER_SLURM_DIR}/modules
-
-        # Generate modules explicitly using our custom template
-        echo "Generating modules with custom relocatable template..."
-        echo "DEBUG: Refreshing module tree..."
-        spack module lmod refresh --delete-tree -y
-        echo "DEBUG: Generating new modules..."
-        spack module lmod refresh -y
-
-        # Find the generated module using Spack's module system
-        echo "Finding Spack-generated module..."
-        echo "DEBUG: Finding Spack-generated module..."
-        MODULE_FILE=$(spack module lmod find slurm 2>/dev/null || echo "")
-
-        if [ -n "$MODULE_FILE" ]; then
-            echo "Found Spack module: $MODULE_FILE"
-            echo "DEBUG: Found Spack module: $MODULE_FILE"
-            # Find the actual file path for this module
-            SPACK_ROOT=$(spack location -r)
-            echo "DEBUG: Spack root: $SPACK_ROOT"
-            MODULE_PATH=$(find "$SPACK_ROOT" -name "*.lua" -path "*$MODULE_FILE*" 2>/dev/null | head -1)
-            echo "DEBUG: Module path search result: $MODULE_PATH"
-
-            if [ -n "$MODULE_PATH" ] && [ -f "$MODULE_PATH" ]; then
-                echo "Copying module file from: $MODULE_PATH"
-                echo "DEBUG: Copying module file from: $MODULE_PATH"
-                cp "$MODULE_PATH" {CONTAINER_SLURM_DIR}/modules/
-                echo "Module copied successfully"
-                echo "DEBUG: Module copied successfully"
-            else
-                echo "Error: Could not find module file for $MODULE_FILE"
-                echo "DEBUG: Error: Could not find module file for $MODULE_FILE"
-                exit 1
-            fi
-        else
-            echo "Error: Could not find Slurm module using 'spack module lmod find'"
-            echo "DEBUG: Error: Could not find Slurm module using 'spack module lmod find'"
-            exit 1
-        fi
-
-        # Create the proper directory structure for module deployment
-        echo 'Structuring module files for deployment...'
-        echo "DEBUG: Creating module package structure in assets directory..."
-        mkdir -p {CONTAINER_SLURM_DIR}/software/assets/slurm
-
-        # Copy the module files
-        if [ -d "{CONTAINER_SLURM_DIR}/modules" ] && \
-            [ "$(ls -A {CONTAINER_SLURM_DIR}/modules 2>/dev/null)" ]; then
-            echo "Copying module files to assets/slurm/..."
-            echo "DEBUG: Copying module files to assets/slurm/..."
-            cp -r {CONTAINER_SLURM_DIR}/modules/* {CONTAINER_SLURM_DIR}/software/assets/slurm/
-
-            # Create .modulerc.lua to set default version
-            echo "Creating .modulerc.lua for module default version..."
-            echo "DEBUG: Creating .modulerc.lua for module default version..."
-            MODULE_LUA_FILE=$(ls {CONTAINER_SLURM_DIR}/software/assets/slurm/*.lua | head -1)
-            if [ -n "$MODULE_LUA_FILE" ]; then
-                MODULE_VERSION=$(basename "$MODULE_LUA_FILE" .lua)
-                echo "DEBUG: Detected module version: $MODULE_VERSION"
-                cat > {CONTAINER_SLURM_DIR}/software/assets/slurm/.modulerc.lua << EOF
--- Set default version for slurm module using module_version
-module_version("$MODULE_VERSION","default")
-EOF
-                echo "DEBUG: Created .modulerc.lua with default version: $MODULE_VERSION"
-            else
-                echo "Warning: Could not detect module version for .modulerc.lua"
-                echo "DEBUG: Warning: Could not detect module version for .modulerc.lua"
-            fi
-
-            echo "DEBUG: Assets directory contents:"
-            ls -la {CONTAINER_SLURM_DIR}/software/assets/slurm/
-        else
-            echo "Error: No module files found after generation"
-            echo "DEBUG: Error: No module files found after generation"
-            exit 1
-        fi
-
-        # Copy slurm_assets directory to assets
-        echo "Copying slurm_assets to assets directory..."
-        echo "DEBUG: Copying slurm_assets from {CONTAINER_SLURM_DIR}/slurm_assets to assets/"
-        if [ -d "{CONTAINER_SLURM_DIR}/slurm_assets" ]; then
-            cp -r {CONTAINER_SLURM_DIR}/slurm_assets {CONTAINER_SLURM_DIR}/software/assets/
-            echo "Slurm assets copied successfully"
-            echo "DEBUG: Slurm assets copied successfully"
-            echo "DEBUG: Assets directory structure:"
-            ls -la {CONTAINER_SLURM_DIR}/software/assets/
-        else
-            echo "Warning: slurm_assets directory not found, skipping"
-            echo "DEBUG: Warning: slurm_assets directory not found at {CONTAINER_SLURM_DIR}/slurm_assets"
-        fi
-
-        echo "DEBUG: Creating unified tarball with software/ and assets/ directories..."
-        # Package the Spack install tree with assets included, preserving directory structure
-        tar -czf {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz -C \
-            {CONTAINER_SLURM_DIR} software/
-        echo "Unified package created successfully"
-        echo "DEBUG: Unified package created successfully"
-
-        echo 'Redistributable package created successfully!'
-        echo "DEBUG: Redistributable package created successfully!"
-        echo "DEBUG: Package contents:"
-        ls -la {CONTAINER_SLURM_DIR}/redistributable/
-        du -sh {CONTAINER_SLURM_DIR}/redistributable/*
-
-        echo 'Copying redistributable package to output directory...'
-        echo "DEBUG: Copying package to {CONTAINER_BUILD_OUTPUT_DIR}/"
-        cp {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz \
-                {CONTAINER_BUILD_OUTPUT_DIR}/
-
-        echo "DEBUG: Final output directory contents:"
-        ls -la {CONTAINER_BUILD_OUTPUT_DIR}/
-        echo 'Files copied successfully!'
-        echo "DEBUG: Package creation script completed successfully"
-        """
+CMD ["/bin/bash"]
+"""
     )

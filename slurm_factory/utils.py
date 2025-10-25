@@ -23,7 +23,6 @@ from rich.markup import escape
 
 from .constants import (
     get_dockerfile,
-    get_packager_dockerfile,
 )
 from .exceptions import SlurmFactoryError, SlurmFactoryStreamExecError
 from .spack_yaml import generate_yaml_string
@@ -67,6 +66,24 @@ def _build_docker_image(
 
     process = None
     try:
+        # Find the repository root (where pyproject.toml is located)
+        from pathlib import Path
+        
+        # Start from current directory and search upwards for pyproject.toml
+        current_dir = Path.cwd()
+        repo_root = current_dir
+        while repo_root != repo_root.parent:
+            if (repo_root / "pyproject.toml").exists():
+                break
+            repo_root = repo_root.parent
+        
+        # If pyproject.toml not found, fallback to current directory
+        if not (repo_root / "pyproject.toml").exists():
+            repo_root = current_dir
+            logger.warning(f"Could not find repository root, using current directory: {repo_root}")
+        else:
+            logger.debug(f"Using repository root as build context: {repo_root}")
+        
         # Use docker build with stdin for the Dockerfile
         cmd = [
             "docker",
@@ -75,7 +92,7 @@ def _build_docker_image(
             image_tag,
             "-f",
             "-",  # Read Dockerfile from stdin
-            ".",  # Build context (we don't actually use files from here)
+            str(repo_root),  # Build context - use repository root so COPY paths work
         ]
         
         # Add --no-cache flag if requested
@@ -240,15 +257,12 @@ def create_slurm_package(
     verbose: bool = False,
     no_cache: bool = False,
 ) -> None:
-    """Create slurm package in a Docker container using a two-stage build."""
+    """Create slurm package in a Docker container using a multi-stage build."""
     console.print("[bold blue]Creating slurm package in Docker container...[/bold blue]")
 
     logger.debug(
         f"Building Slurm package: version={version}, gpu={gpu_support}, minimal={minimal}, verify={verify}, no_cache={no_cache}"
     )
-
-    builder_image_tag = f"{image_tag}-builder"
-    packager_image_tag = f"{image_tag}-packager"
 
     try:
         # If no_cache is enabled, clean up everything first
@@ -257,8 +271,6 @@ def create_slurm_package(
             
             # Remove old Docker images
             _remove_old_docker_image(image_tag, verbose=verbose)
-            _remove_old_docker_image(builder_image_tag, verbose=verbose)
-            _remove_old_docker_image(packager_image_tag, verbose=verbose)
             
             # Clear Docker build cache
             console.print("[dim]Pruning Docker build cache...[/dim]")
@@ -290,67 +302,33 @@ def create_slurm_package(
         )
         logger.debug(f"Generated Spack YAML configuration ({len(spack_yaml)} chars)")
 
-        # ========================================================================
-        # STAGE 1: Build the builder image (heavily cached)
-        # ========================================================================
-        console.print("[bold cyan]Stage 1/2: Building Slurm with Spack...[/bold cyan]")
-        
-        # Generate Dockerfile with embedded spack.yaml
-        logger.debug("Generating builder Dockerfile")
-        dockerfile_content = get_dockerfile(spack_yaml)
+        # Generate multi-stage Dockerfile with embedded spack.yaml
+        # This single Dockerfile contains 3 stages:
+        # 1. init: Ubuntu + deps + Spack (heavily cached)
+        # 2. builder: Spack install + view + modules (cached on spack.yaml changes)
+        # 3. packager: Copy assets + create tarball (invalidates on asset changes)
+        logger.debug("Generating multi-stage Dockerfile")
+        dockerfile_content = get_dockerfile(spack_yaml, version)
         logger.debug(f"Generated Dockerfile ({len(dockerfile_content)} chars)")
 
-        # Build builder stage only
+        # Build all stages up to packager (the final stage)
+        console.print("[bold cyan]Building multi-stage Docker image (init → builder → packager)...[/bold cyan]")
         _build_docker_image(
-            builder_image_tag,
+            image_tag,
             dockerfile_content,
             cache_dir,
             verbose=verbose,
             no_cache=no_cache,
-            target="builder",  # Only build up to builder stage
+            target="packager",  # Build all stages up to packager
         )
         
-        console.print("[bold green]✓ Builder stage complete (cached for future builds)[/bold green]")
-
-        # ========================================================================
-        # STAGE 2: Build the packager image (invalidates on config changes)
-        # ========================================================================
-        console.print("[bold cyan]Stage 2/2: Packaging with configuration files...[/bold cyan]")
-        
-        # Generate packager Dockerfile that builds FROM builder
-        logger.debug("Generating packager Dockerfile")
-        packager_dockerfile = get_packager_dockerfile(builder_image_tag, version)
-        logger.debug(f"Generated packager Dockerfile ({len(packager_dockerfile)} chars)")
-
-        # Build packager image with config files from host
-        # This will invalidate when data/slurm_assets or data/templates change
-        _build_docker_image(
-            packager_image_tag,
-            packager_dockerfile,
-            cache_dir,
-            verbose=verbose,
-            no_cache=False,  # Allow caching for packager stage
-        )
-        
-        console.print("[bold green]✓ Packager stage complete[/bold green]")
-
-        # Tag the final packager image as the main image tag for compatibility
-        try:
-            subprocess.run(
-                ["docker", "tag", packager_image_tag, image_tag],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            logger.debug(f"Tagged {packager_image_tag} as {image_tag}")
-        except subprocess.CalledProcessError as e:
-            logger.warning(f"Could not tag packager image: {e}")
+        console.print("[bold green]✓ Multi-stage build complete[/bold green]")
 
         # Extract the tarball from the packager image
         if cache_dir:
             console.print("[bold cyan]Extracting tarball from image...[/bold cyan]")
             extract_slurm_package_from_image(
-                image_tag=packager_image_tag,
+                image_tag=image_tag,
                 output_dir=cache_dir,
                 version=version,
                 verbose=verbose,

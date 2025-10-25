@@ -135,7 +135,40 @@ if [[ "$HEAD_NODE_INIT" == "true" ]]; then
     
     # Add GPG key for Apptainer PPA
     echo "Adding Apptainer GPG key..."
-    wget -qO- https://keyserver.ubuntu.com/pks/lookup?op=get\&search=0x12DB84A818D59E16E97A08DD4A5B64C86FDB69CF | gpg --dearmor | tee /usr/share/keyrings/apptainer-archive-keyring.gpg >/dev/null
+    cat > /tmp/apptainer-key.asc << 'EOF'
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Comment: Hostname:
+Version: Hockeypuck 2.1.0-223-gdc2762b
+
+xsFNBGPKLe0BEADKAHtUqLFryPhZ3m6uwuIQvwUr4US17QggRrOaS+jAb6e0P8kN
+1clzJDuh3C6GnxEZKiTW3aZpcrW/n39qO263OMoUZhm1AliqiViJgthnqYGSbMgZ
+/OB6ToQeHydZ+MgI/jpdAyYSI4Tf4SVPRbOafLvnUW5g/vJLMzgTAxyyWEjvH9Lx
+yjOAXpxubz0Wu2xcoefN0mKCpaPsa9Y8xmog1lsylU+H/4BX6yAG7zt5hIvadc9Z
+Y/vkDLh8kNaEtkXmmnTqGOsLgH6Nc5dnslR6Gwq966EC2Jbw0WbE50pi4g21s6Wi
+wdU27/XprunXhhLdv6PYUaqdXxPRdBh+9u0LmNZsAyUxT6EgN05TAWFtaMOz7I3B
+V6IpHuLqmIcnqulHrLi+0D/aiCv53WEZrBRmDBGX7p52lcyS+Q+LFf0+iYeY7pRG
+fPXboBDr+6DelkYFIxam06purSGR3T9RJyrMP7qMWiInWxcxBoCMNfy8VudP0DAy
+r2yXmHZbgSGjfJey03dnNwQH7huBcQ1VLEqtL+bjn3HubmYK87FltX7xomETFqcl
+QmiT+WBttFRGtO6SFHHiBXOXUn0ihwabtr6gRKeJssCnFS3Y46RDv4z3Je92roLt
+TPY8F9CgZrGiAoKq530BzEhJB6vfW3faRnLKdLePX/LToCP0g2t2jKwkzQARAQAB
+zRtMYXVuY2hwYWQgUFBBIGZvciBBcHB0YWluZXLCwY4EEwEKADgWIQT2sPUZPU8z
+Ae9JH/Cv42U0/GIYrgUCY8ot7QIbAwULCQgHAgYVCgkICwIEFgIDAQIeAQIXgAAK
+CRCv42U0/GIYrut4EAC06vTJP2wgnh3BIZ3n2HKaSp4QsuYKS7F7UQJ5Yt+PpnKn
+Pgjq3R4fYzOHyASv+TCj9QkMaeqWGWb6Zw0n47EtrCW9U5099Vdk2L42KjrqZLiW
+qQ11hwWXUlc1ZYSOb0J4WTumgO6MrUCFkmNrbRE7yB42hxr/AU/XNM38YjN2NyOK
+2gvORRKFwlLKrjE+70HmoCW09Yk64BZl1eCubM/qy5tKzSlC910uz87FvZmrGKKF
+rXa2HGlO4O3Ty7bMSeRKl9m1OYuffAXNwp3/Vale9eDHOeq58nn7wU9pSosmqrXb
+SLOwqQylc1YoLZMj+Xjx644xm5e2bhyD00WiHeqHmvlfQQWCWaPt4i4K0nJuYXwm
+BCA6YUgSfDZJfg/FxJdU7ero5F9st2GK4WDBiz+1Eftw6Ik/WnMDSxXaZ8pwnd9N
++aAEc/QKP5e8kjxJMC9kfvXGUVzZuMbkUV+PycZhUWl4Aelua91lnTicVYfpuVCC
+GqY0StWQeOxLJneI+1FqLFoBOZghzoTY5AYCp99RjKqQvY1vF4uErltmNeN1vtBm
+CZyDOLQuQfqWWAunUwXVuxMJIENSVeLXunhu9ac24Vnf2rFqH4XVMDxiKc6+sv+v
+fKpamSQOUSmfWJTnry/LiYbspi1OB2x3GQk3/4ANw0S4L83A6oXHUMg8x7/sZw==
+=E71P
+-----END PGP PUBLIC KEY BLOCK-----
+EOF
+    gpg --dearmor < /tmp/apptainer-key.asc > /usr/share/keyrings/apptainer-archive-keyring.gpg
+    rm -f /tmp/apptainer-key.asc
     
     # Add Apptainer repository
     echo "deb [signed-by=/usr/share/keyrings/apptainer-archive-keyring.gpg] https://ppa.launchpadcontent.net/apptainer/ppa/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/apptainer.list
@@ -151,6 +184,7 @@ if [[ "$HEAD_NODE_INIT" == "true" ]]; then
         openmpi-bin \
         parallel \
         mysql-server \
+        libedit2 \
         apptainer-suid \
         influxdb \
         influxdb-client \
@@ -250,21 +284,6 @@ chown -R slurm:slurm /var/lib/slurm
 chown slurm:slurm /etc/slurm/slurmdbd.conf
 chown slurm:slurm /etc/slurm/slurm.conf
 
-echo "=== Installing Slurm Lmod module ==="
-if [[ -d /usr/share/lmod/lmod/modulefiles ]]; then
-    # Module files should be in the extracted tarball
-    if [[ -d "$(dirname "$SCRIPT_DIR")/slurm" ]]; then
-        echo "Installing Lmod module from extracted tarball"
-        mkdir -p /usr/share/lmod/lmod/modulefiles/slurm
-        cp "$(dirname "$SCRIPT_DIR")/slurm"/*.lua /usr/share/lmod/lmod/modulefiles/slurm/
-        echo "Slurm Lmod module installed from tarball"
-    else
-        echo "Error: Module files not found in tarball at $(dirname "$SCRIPT_DIR")/slurm"
-        exit 1
-    fi
-else
-    echo "Warning: Lmod modulefiles directory not found, skipping module installation"
-fi
 
 echo "=== Installing Slurm software ==="
 # Check if Slurm binaries already exist in the expected location
@@ -275,6 +294,22 @@ else
     wget -qO- https://vantage-public-assets.s3.us-west-2.amazonaws.com/slurm/25.05/slurm-latest.tar.gz | \
         tar --no-same-owner --no-same-permissions --touch -xz -C /opt/slurm
     echo "Slurm software installed to /opt/slurm"
+fi
+
+echo "=== Installing Slurm Lmod module ==="
+if [[ -d /usr/share/lmod/lmod/modulefiles ]]; then
+    # Module files should be in the extracted tarball
+    if [[ -d "$(dirname "$SCRIPT_DIR")/modules/slurm" ]]; then
+        echo "Installing Lmod module from extracted tarball"
+        mkdir -p /usr/share/lmod/lmod/modulefiles/slurm
+        cp "$(dirname "$SCRIPT_DIR")/modules/slurm/"*.lua /usr/share/lmod/lmod/modulefiles/slurm/
+        echo "Slurm Lmod module installed from tarball"
+    else
+        echo "Error: Module files not found in tarball at $(dirname "$SCRIPT_DIR")/modules/slurm"
+        exit 1
+    fi
+else
+    echo "Warning: Lmod modulefiles directory not found, skipping module installation"
 fi
 
 echo "=== Creating Slurm command wrapper scripts ==="
