@@ -65,11 +65,7 @@ for proper RPATH relocation. Manual copying may require LD_LIBRARY_PATH fallback
 -- Relocatable prefix logic with validation
 local slurm_prefix = os.getenv("SLURM_INSTALL_PREFIX")
 if not slurm_prefix then
-{% if spec and spec.prefix -%}
-    slurm_prefix = "{{ spec.prefix }}"
-{% else -%}
-    slurm_prefix = "/opt/slurm"
-{% endif -%}
+    slurm_prefix = "/opt/slurm/view"
 end
 
 -- Validate that the specified prefix exists and contains Slurm

@@ -210,7 +210,7 @@ def get_package_tarball_script(modulerc_script: str, version: str) -> str:
         {modulerc_script} && \\
         cd {CONTAINER_SLURM_DIR} && \\
         mkdir -p {CONTAINER_SLURM_DIR}/redistributable && \\
-        tar -czf {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz view && \\
+        tar -chzf {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz view && \\
         mkdir -p {CONTAINER_BUILD_OUTPUT_DIR} && \\
         cp {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz {CONTAINER_BUILD_OUTPUT_DIR}/
     """).strip()

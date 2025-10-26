@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Parse command line arguments
 FULL_INIT=false
 INIT_ONLY=false
+START_SERVICES=false
 HEAD_NODE_INIT=false
 CLUSTER_NAME="cluster"
 ORG_ID=""
@@ -23,7 +24,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --start-services)
-            START_SERVICES=false
+            START_SERVICES=true
             shift
             ;;
         --init-only)
@@ -467,8 +468,11 @@ if [[ "$FULL_INIT" == "true" ]] || [[ "$INIT_ONLY" == "true" ]]; then
 
     systemctl stop mysql.service
     systemctl enable --now mysql.service
+    
+    # Wait for MySQL to be ready
+    sleep 5
 
-    mysql << 'END_SQL'
+    mysql --socket=/var/run/mysqld/mysqld.sock << 'END_SQL'
 CREATE USER IF NOT EXISTS 'slurm'@'localhost' IDENTIFIED BY 'rats';
 CREATE DATABASE IF NOT EXISTS slurm DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 GRANT ALL PRIVILEGES ON slurm.* TO 'slurm'@'localhost';
@@ -485,13 +489,16 @@ END_SQL
     #influx -execute 'CREATE CONTINUOUS QUERY "slurm_job_metrics" ON "slurm-job-metrics" BEGIN SELECT mean("value") INTO "slurm-job-metrics"."three_days"."mean_value" FROM "slurm-job-metrics" GROUP BY time(1h) END'
     if [ $START_SERVICES == "true" ]; then
         echo "=== Enabling and starting Slurm services ==="
-        systemctl enable --now slurmdbd
+        systemctl enable slurmdbd
+        systemctl start slurmdbd
         echo "  ✓ slurmdbd enabled and started"
     
-        systemctl enable --now slurmctld
+        systemctl enable slurmctld
+        systemctl start slurmctld
         echo "  ✓ slurmctld enabled and started"
     
-        systemctl enable --now slurmd
+        systemctl enable slurmd
+        systemctl start slurmd
         echo "  ✓ slurmd enabled and started"
     
         echo "=== Verifying services ==="
