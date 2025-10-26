@@ -159,14 +159,14 @@ def get_spack_build_script() -> str:
         rm -f spack.lock && \\
         spack concretize -j \\$(nproc) -f --fresh && \\
         spack install -j\\$(nproc) --only-concrete -f --verbose -p 4 --no-cache && \\
+        spack env view regenerate && \\
         spack module lmod refresh --delete-tree -y && \\
         spack module lmod refresh -y && \\
         mkdir -p {CONTAINER_SLURM_DIR}/modules && \\
         SPACK_ROOT_PATH=\\$(spack location -r) && \\
         for f in \\$(find \\$SPACK_ROOT_PATH/share/spack/lmod -type f -name '*.lua'); do \\
             case \\$f in *slurm*) cp \\"\\$f\\" {CONTAINER_SLURM_DIR}/modules/;; esac; \\
-        done && \\
-        spack gc -y"
+        done"
     """).strip()
 
 
@@ -193,13 +193,8 @@ def get_package_tarball_script(modulerc_script: str, version: str) -> str:
         else \\
             echo "DEBUG: All critical libraries verified in view"; \\
         fi && \\
-        echo "DEBUG: Merging view into software directory..." && \\
-        echo "Copying Spack view contents to software directory (resolving symlinks)..." && \\
-        echo "DEBUG: Copying from {CONTAINER_SLURM_DIR}/view/* to {CONTAINER_SLURM_DIR}/software/" && \\
-        cp -rL {CONTAINER_SLURM_DIR}/view/* {CONTAINER_SLURM_DIR}/software/ && \\
-        mkdir -p {CONTAINER_SLURM_DIR}/redistributable && \\
-        [ -d "{CONTAINER_SLURM_DIR}/software" ] || {{ echo "ERROR: Spack install tree not found"; exit 1; }} && \\
-        cd {CONTAINER_SLURM_DIR}/software && \\
+        echo "DEBUG: Packaging view directly (projections create FHS layout)..." && \\
+        cd {CONTAINER_SLURM_DIR}/view && \\
         find . -name "include" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
         find . -path "*/lib/pkgconfig" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
         find . -path "*/share/doc" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
@@ -208,12 +203,14 @@ def get_package_tarball_script(modulerc_script: str, version: str) -> str:
         find . -name "__pycache__" -type d -exec rm -rf {{}} + 2>/dev/null || true && \\
         find . -name "*.pyc" -delete 2>/dev/null || true && \\
         find . -name "*.a" -delete 2>/dev/null || true && \\
-        mkdir -p {CONTAINER_SLURM_DIR}/software/assets && \\
-        cp -r {CONTAINER_SLURM_DIR}/slurm_assets {CONTAINER_SLURM_DIR}/software/assets/ && \\
-        mkdir -p {CONTAINER_SLURM_DIR}/software/assets/modules/slurm && \\
-        cp {CONTAINER_SLURM_DIR}/modules/*.lua {CONTAINER_SLURM_DIR}/software/assets/modules/slurm/ && \\
+        mkdir -p assets && \\
+        cp -r {CONTAINER_SLURM_DIR}/slurm_assets assets/ && \\
+        mkdir -p assets/modules/slurm && \\
+        cp {CONTAINER_SLURM_DIR}/modules/*.lua assets/modules/slurm/ && \\
         {modulerc_script} && \\
-        tar -czf {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz -C {CONTAINER_SLURM_DIR} software/ && \\
+        cd {CONTAINER_SLURM_DIR} && \\
+        mkdir -p {CONTAINER_SLURM_DIR}/redistributable && \\
+        tar -czf {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz view && \\
         mkdir -p {CONTAINER_BUILD_OUTPUT_DIR} && \\
         cp {CONTAINER_SLURM_DIR}/redistributable/slurm-{version}-software.tar.gz {CONTAINER_BUILD_OUTPUT_DIR}/
     """).strip()
@@ -243,8 +240,8 @@ def get_dockerfile(spack_yaml_content: str, version: str = "25.05") -> str:
     
     # Generate the modulerc creation script
     modulerc_script = get_modulerc_creation_script(
-        module_dir=f"{CONTAINER_SLURM_DIR}/software/assets/modules/slurm",
-        modulerc_path=f"{CONTAINER_SLURM_DIR}/software/assets/modules/slurm/.modulerc.lua"
+        module_dir=f"{CONTAINER_SLURM_DIR}/view/assets/modules/slurm",
+        modulerc_path=f"{CONTAINER_SLURM_DIR}/view/assets/modules/slurm/.modulerc.lua"
     )
     
     # Generate the packaging script

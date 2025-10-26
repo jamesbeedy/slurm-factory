@@ -168,6 +168,10 @@ def generate_spack_config(
     specs = [
         # Build a bootstrapped compiler first (in-DAG)
         gcc_spec,
+        "zlib@1.3.1 %gcc@13.3.0",  # Build zlib first (needed by OpenSSL and others)
+        "openssl@3.4.1 ^zlib@1.3.1 %gcc@13.3.0",  # Build OpenSSL with explicit zlib dependency
+        "jansson@2.14 %gcc@13.3.0",  # JSON library for libjwt
+        "libjwt@1.15.3 ^openssl@3.4.1 ^zlib@1.3.1 ^jansson@2.14 %gcc@13.3.0",  # JWT library with all dependencies
         openldap_spec,  # Build openldap before curl since curl+ldap needs it
         curl_spec,
         "patchelf@0.18.0 %gcc@13.3.0",  # For RPATH fixing during relocatability
@@ -178,7 +182,6 @@ def generate_spack_config(
             f"{gpu_flags} ~cgroup sysconfdir=/etc/slurm %gcc@13.3.0"
         )
     else:
-        specs.append("zlib@1.3.1 %gcc@13.3.0")
         specs.append("openmpi@5.0.3 schedulers=slurm fabrics=auto %gcc@13.3.0")
         specs.append("pmix@5.0.8 ~munge ~python %gcc@13.3.0")
         specs.append("mysql@8.0.35+client_only %gcc@13.3.0")
@@ -188,48 +191,6 @@ def generate_spack_config(
             "+readline +hwloc +pmix +hdf5 +kafka +restd +cgroup +pam "
             f"{gpu_flags} sysconfdir=/etc/slurm %gcc@13.3.0"
         )
-
-    # Base view packages (runtime dependencies + toolchain for relocatability)
-    view_packages = [
-        "slurm",
-        "readline",
-        "pkgconf",  # Modern pkg-config implementation
-        "hwloc",
-        "libpciaccess",
-        "xz",
-        "libiconv",
-        "libxml2",
-        "lz4",
-        "numactl",
-        "gcc-runtime",
-        "http-parser",
-        "ca-certificates-mozilla",  # Self-contained SSL certificates for relocatability
-        "curl",
-        "libssh2",  # SSH2 library needed by curl and slurmd
-        "openldap",  # LDAP library needed by curl
-        "openssl",  # SSL/TLS library
-        "munge",  # Authentication library
-        "json-c",  # JSON parsing library
-        "libjwt",  # JWT token library for REST API
-        "jansson",  # JSON library required by libjwt
-        "glib",  # GLib library
-        "zlib",  # Standard zlib compression library (provides libz.so.1)
-        "zlib-ng",  # Compression library
-        "librdkafka",
-        "rapidjson",
-        "cyrus-sasl",
-        "patchelf",  # For RPATH fixing during relocatability
-        "ncurses",  # Terminal library for libtinfow
-        "lua",  # Lua scripting language for Slurm plugin support
-    ]
-
-    # Add conditional packages based on build type
-    if not minimal:
-        # Full builds include openmpi, pmix, and mysql
-        view_packages.extend(["openmpi", "pmix", "libevent", "mysql"])
-
-    if gpu_support:
-        view_packages.extend(["cuda", "rocm"])
 
     # Base configuration
     config: Dict[str, Any] = {
@@ -407,8 +368,10 @@ def generate_spack_config(
                 "default": {
                     "root": view_root,
                     "link_type": "hardlink",  # Use hardlinks instead of symlinks for easier copying
-                    "select": view_packages,  # Only include essential runtime dependencies in view
-                    "exclude": ["^cmake", "^autoconf", "^automake", "^libtool", "^bison", "^flex"],
+                    "projections": {"all": "."},  # Merge all packages into unified FHS structure
+                    # No 'select' - include all installed packages automatically
+                    # Only exclude external packages that are system-provided
+                    "exclude": ["cmake", "autoconf", "automake", "libtool", "python", "gmake", "m4", "pkgconf", "diffutils", "findutils", "gettext", "tar", "bison", "flex", "glibc", "gcc"],
                 }
             },
             "config": {

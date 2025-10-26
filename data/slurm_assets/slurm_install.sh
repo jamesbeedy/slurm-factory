@@ -287,13 +287,14 @@ chown slurm:slurm /etc/slurm/slurm.conf
 
 echo "=== Installing Slurm software ==="
 # Check if Slurm binaries already exist in the expected location
-if [[ -d /opt/slurm/software/bin ]] && [[ -f /opt/slurm/software/bin/sinfo ]]; then
-    echo "Slurm software already present at /opt/slurm/software"
+if [[ -d /opt/slurm/view/bin ]] && [[ -f /opt/slurm/view/bin/sinfo ]]; then
+    echo "Slurm software already present at /opt/slurm/view"
 else
     echo "Downloading and extracting Slurm software"
+    mkdir -p /opt/slurm
     wget -qO- https://vantage-public-assets.s3.us-west-2.amazonaws.com/slurm/25.05/slurm-latest.tar.gz | \
         tar --no-same-owner --no-same-permissions --touch -xz -C /opt/slurm
-    echo "Slurm software installed to /opt/slurm"
+    echo "Slurm software installed to /opt/slurm/view"
 fi
 
 echo "=== Installing Slurm Lmod module ==="
@@ -313,31 +314,31 @@ else
 fi
 
 echo "=== Creating Slurm command wrapper scripts ==="
-for i in /opt/slurm/software/bin/sacct \
-  /opt/slurm/software/bin/sacctmgr \
-  /opt/slurm/software/bin/salloc \
-  /opt/slurm/software/bin/sattach \
-  /opt/slurm/software/bin/sbang \
-  /opt/slurm/software/bin/sbatch \
-  /opt/slurm/software/bin/sbcast \
-  /opt/slurm/software/bin/scancel \
-  /opt/slurm/software/bin/scontrol \
-  /opt/slurm/software/bin/scrontab \
-  /opt/slurm/software/bin/sdiag \
-  /opt/slurm/software/bin/sh5util \
-  /opt/slurm/software/bin/sinfo \
-  /opt/slurm/software/bin/sprio \
-  /opt/slurm/software/bin/squeue \
-  /opt/slurm/software/bin/sreport \
-  /opt/slurm/software/bin/srun \
-  /opt/slurm/software/bin/sshare \
-  /opt/slurm/software/bin/sstat \
-  /opt/slurm/software/bin/strigger \
-  /opt/slurm/software/sbin/slurmctld \
-  /opt/slurm/software/sbin/slurmd \
-  /opt/slurm/software/sbin/slurmdbd \
-  /opt/slurm/software/sbin/slurmrestd \
-  /opt/slurm/software/sbin/slurmstepd; do
+for i in /opt/slurm/view/bin/sacct \
+  /opt/slurm/view/bin/sacctmgr \
+  /opt/slurm/view/bin/salloc \
+  /opt/slurm/view/bin/sattach \
+  /opt/slurm/view/bin/sbang \
+  /opt/slurm/view/bin/sbatch \
+  /opt/slurm/view/bin/sbcast \
+  /opt/slurm/view/bin/scancel \
+  /opt/slurm/view/bin/scontrol \
+  /opt/slurm/view/bin/scrontab \
+  /opt/slurm/view/bin/sdiag \
+  /opt/slurm/view/bin/sh5util \
+  /opt/slurm/view/bin/sinfo \
+  /opt/slurm/view/bin/sprio \
+  /opt/slurm/view/bin/squeue \
+  /opt/slurm/view/bin/sreport \
+  /opt/slurm/view/bin/srun \
+  /opt/slurm/view/bin/sshare \
+  /opt/slurm/view/bin/sstat \
+  /opt/slurm/view/bin/strigger \
+  /opt/slurm/view/sbin/slurmctld \
+  /opt/slurm/view/sbin/slurmd \
+  /opt/slurm/view/sbin/slurmdbd \
+  /opt/slurm/view/sbin/slurmrestd \
+  /opt/slurm/view/sbin/slurmstepd; do
 
   if [[ ! -f "$i" ]]; then
     echo "Warning: $i not found, skipping wrapper creation"

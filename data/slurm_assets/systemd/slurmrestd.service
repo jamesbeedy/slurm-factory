@@ -15,7 +15,7 @@ Group=slurmrestd
 RuntimeDirectory=slurmrestd
 RuntimeDirectoryMode=0755
 
-ExecStart=/bin/bash -lc 'source /etc/profile.d/z00_lmod.sh; exec /usr/sbin/slurmrestd $SLURMRESTD_OPTIONS -vv 0.0.0.0:6820'
+ExecStart=/usr/sbin/slurmrestd $SLURMRESTD_OPTIONS -vv 0.0.0.0:6820
 
 ExecReload=/bin/kill -HUP $MAINPID
 
