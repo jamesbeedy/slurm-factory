@@ -91,7 +91,7 @@ def get_modulerc_creation_script(module_dir: str, modulerc_path: str) -> str:
     # Use printf with %s for proper escaping, avoiding single quotes in echo
     # This avoids issues when embedded in complex shell scripts
     return (
-        f'MODULE_LUA_FILE=$(ls {module_dir}/*.lua | head -1) && '
+        f"MODULE_LUA_FILE=$(ls {module_dir}/*.lua | head -1) && "
         f'[ -n "$MODULE_LUA_FILE" ] && '
         f'MODULE_VERSION=$(basename "$MODULE_LUA_FILE" .lua) && '
         f'printf "module_version(\\"%s\\",\\"default\\")\\n" "$MODULE_VERSION" > {modulerc_path}'
