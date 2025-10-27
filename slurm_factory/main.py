@@ -268,7 +268,7 @@ def build(
     )
     if no_cache:
         console.print("[bold yellow]Building with --no-cache (fresh build)[/bold yellow]")
-    
+
     builder_build(ctx, slurm_version, gpu, additional_variants, minimal, verify, no_cache)
 
 

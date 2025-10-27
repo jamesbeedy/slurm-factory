@@ -55,11 +55,11 @@ def _build_docker_image(
     console.print(f"[bold blue]Building Docker image {image_tag}...[/bold blue]")
     logger.debug(f"Building Docker image: {image_tag}")
     logger.debug(f"Dockerfile size: {len(dockerfile_content)} characters")
-    
+
     if no_cache:
         logger.debug("Building with --no-cache flag")
         console.print("[bold yellow]Building without cache (this may take longer)[/bold yellow]")
-    
+
     if target:
         logger.debug(f"Building target stage: {target}")
         console.print(f"[dim]Building target stage: {target}[/dim]")
@@ -68,7 +68,7 @@ def _build_docker_image(
     try:
         # Find the repository root (where pyproject.toml is located)
         from pathlib import Path
-        
+
         # Start from current directory and search upwards for pyproject.toml
         current_dir = Path.cwd()
         repo_root = current_dir
@@ -76,14 +76,14 @@ def _build_docker_image(
             if (repo_root / "pyproject.toml").exists():
                 break
             repo_root = repo_root.parent
-        
+
         # If pyproject.toml not found, fallback to current directory
         if not (repo_root / "pyproject.toml").exists():
             repo_root = current_dir
             logger.warning(f"Could not find repository root, using current directory: {repo_root}")
         else:
             logger.debug(f"Using repository root as build context: {repo_root}")
-        
+
         # Use docker build with stdin for the Dockerfile
         cmd = [
             "docker",
@@ -94,11 +94,11 @@ def _build_docker_image(
             "-",  # Read Dockerfile from stdin
             str(repo_root),  # Build context - use repository root so COPY paths work
         ]
-        
+
         # Add --no-cache flag if requested
         if no_cache:
             cmd.insert(2, "--no-cache")
-        
+
         # Add --target flag if specified
         if target:
             cmd.extend(["--target", target])
@@ -187,7 +187,7 @@ def _remove_old_docker_image(image_tag: str, verbose: bool = False) -> None:
             )
 
             if remove_result.returncode == 0:
-                console.print(f"[bold green]✓ Removed old Docker image[/bold green]")
+                console.print("[bold green]✓ Removed old Docker image[/bold green]")
                 logger.debug(f"Removed Docker image: {image_tag}")
             else:
                 logger.warning(f"Failed to remove Docker image: {remove_result.stderr}")
@@ -216,7 +216,7 @@ def _clear_cache_directory(cache_dir: str, verbose: bool = False) -> None:
     import shutil
 
     cache_path = Path(cache_dir)
-    
+
     if not cache_path.exists():
         logger.debug(f"Cache directory does not exist: {cache_dir}")
         return
@@ -232,7 +232,7 @@ def _clear_cache_directory(cache_dir: str, verbose: bool = False) -> None:
                 shutil.rmtree(item)
                 if verbose:
                     console.print(f"[dim]Removed directory: {item.name}[/dim]")
-        
+
         console.print(f"[bold green]✓ Cleared cache directory: {cache_dir}[/bold green]")
         logger.debug("Cache directory cleared successfully")
 
@@ -241,8 +241,6 @@ def _clear_cache_directory(cache_dir: str, verbose: bool = False) -> None:
         logger.error(msg)
         console.print(f"[bold red]{escape(msg)}[/bold red]")
         raise SlurmFactoryError(msg)
-
-
 
 
 def create_slurm_package(
@@ -261,17 +259,18 @@ def create_slurm_package(
     console.print("[bold blue]Creating slurm package in Docker container...[/bold blue]")
 
     logger.debug(
-        f"Building Slurm package: version={version}, gpu={gpu_support}, minimal={minimal}, verify={verify}, no_cache={no_cache}"
+        f"Building Slurm package: version={version}, gpu={gpu_support}, "
+        f"minimal={minimal}, verify={verify}, no_cache={no_cache}"
     )
 
     try:
         # If no_cache is enabled, clean up everything first
         if no_cache:
             console.print("[bold yellow]🗑️  Performing fresh build - cleaning all caches...[/bold yellow]")
-            
+
             # Remove old Docker images
             _remove_old_docker_image(image_tag, verbose=verbose)
-            
+
             # Clear Docker build cache
             console.print("[dim]Pruning Docker build cache...[/dim]")
             try:
@@ -286,11 +285,11 @@ def create_slurm_package(
                 logger.warning(f"Could not clear Docker build cache: {e}")
                 if verbose:
                     console.print(f"[dim]Warning: Could not clear build cache: {escape(str(e))}[/dim]")
-            
+
             # Clear the cache directory
             if cache_dir:
                 _clear_cache_directory(cache_dir, verbose=verbose)
-        
+
         # Generate dynamic Spack configuration
         logger.debug("Generating dynamic Spack YAML configuration")
         spack_yaml = generate_yaml_string(
@@ -312,7 +311,9 @@ def create_slurm_package(
         logger.debug(f"Generated Dockerfile ({len(dockerfile_content)} chars)")
 
         # Build all stages up to packager (the final stage)
-        console.print("[bold cyan]Building multi-stage Docker image (init → builder → packager)...[/bold cyan]")
+        console.print(
+            "[bold cyan]Building multi-stage Docker image (init → builder → packager)...[/bold cyan]"
+        )
         _build_docker_image(
             image_tag,
             dockerfile_content,
@@ -321,7 +322,7 @@ def create_slurm_package(
             no_cache=no_cache,
             target="packager",  # Build all stages up to packager
         )
-        
+
         console.print("[bold green]✓ Multi-stage build complete[/bold green]")
 
         # Extract the tarball from the packager image

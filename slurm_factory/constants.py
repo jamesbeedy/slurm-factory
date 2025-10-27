@@ -79,17 +79,23 @@ def get_module_template_content() -> str:
 def get_modulerc_creation_script(module_dir: str, modulerc_path: str) -> str:
     """
     Generate bash script to create the .modulerc.lua file.
-    
+
     Args:
         module_dir: Directory containing the .lua module files
         modulerc_path: Full path where .modulerc.lua should be created
-        
+
     Returns:
         Single-line bash script as a string
+
     """
     # Use printf with %s for proper escaping, avoiding single quotes in echo
     # This avoids issues when embedded in complex shell scripts
-    return f'MODULE_LUA_FILE=$(ls {module_dir}/*.lua | head -1) && [ -n "$MODULE_LUA_FILE" ] && MODULE_VERSION=$(basename "$MODULE_LUA_FILE" .lua) && printf "module_version(\\"%s\\",\\"default\\")\\n" "$MODULE_VERSION" > {modulerc_path}'
+    return (
+        f'MODULE_LUA_FILE=$(ls {module_dir}/*.lua | head -1) && '
+        f'[ -n "$MODULE_LUA_FILE" ] && '
+        f'MODULE_VERSION=$(basename "$MODULE_LUA_FILE" .lua) && '
+        f'printf "module_version(\\"%s\\",\\"default\\")\\n" "$MODULE_VERSION" > {modulerc_path}'
+    )
 
 
 def get_install_system_deps_script() -> str:
@@ -130,7 +136,8 @@ def get_install_spack_script() -> str:
         """\
         git clone --depth 1 --branch v1.0.0 https://github.com/spack/spack.git /opt/spack && \\
         chown -R root:root /opt/spack && chmod -R a+rX /opt/spack
-    """).strip()
+    """
+    ).strip()
 
 
 def get_spack_profile_script() -> str:
@@ -171,15 +178,20 @@ def get_spack_build_script() -> str:
 
 
 def get_package_tarball_script(modulerc_script: str, version: str) -> str:
-    """Generate script to package everything into a tarball.
-    
+    """
+    Generate script to package everything into a tarball.
+
     Args:
         modulerc_script: The script to create .modulerc.lua file
         version: Slurm version (e.g., "25.05") for the tarball filename
+
     """
     return textwrap.dedent(f"""\
         set -e && \\
-        [ -d "{CONTAINER_SLURM_DIR}/view" ] || {{ echo "ERROR: Spack view was not created at {CONTAINER_SLURM_DIR}/view"; exit 1; }} && \\
+        [ -d "{CONTAINER_SLURM_DIR}/view" ] || {{ \\
+            echo "ERROR: Spack view was not created at {CONTAINER_SLURM_DIR}/view"; \\
+            exit 1; \\
+        }} && \\
         MISSING_LIBS="" && \\
         for lib in libmunge.so libjwt.so libjansson.so; do \\
             if ! find {CONTAINER_SLURM_DIR}/view/lib* -name "$lib*" 2>/dev/null | grep -q .; then \\
@@ -219,16 +231,18 @@ def get_package_tarball_script(modulerc_script: str, version: str) -> str:
 def get_dockerfile(spack_yaml_content: str, version: str = "25.05") -> str:
     """
     Generate a multi-stage Dockerfile for building Slurm packages.
-    
+
     Stage 1 (init): Ubuntu + system deps + Spack (heavily cached)
     Stage 2 (builder): Runs spack install, creates view, generates modules (cached on spack.yaml)
     Stage 3 (packager): Copies slurm_assets and creates tarball (invalidates on asset changes)
 
     Args:
         spack_yaml_content: The complete spack.yaml content as a string
+        version: Slurm version (e.g., "25.05") for the tarball filename
 
     Returns:
         A complete multi-stage Dockerfile as a string
+
     """
     # Generate all script components
     install_deps_script = get_install_system_deps_script()
@@ -237,16 +251,16 @@ def get_dockerfile(spack_yaml_content: str, version: str = "25.05") -> str:
     create_dirs_script = get_create_directories_script()
     module_template_content = get_module_template_content()
     spack_build_script = get_spack_build_script()
-    
+
     # Generate the modulerc creation script
     modulerc_script = get_modulerc_creation_script(
         module_dir=f"{CONTAINER_SLURM_DIR}/view/assets/modules/slurm",
-        modulerc_path=f"{CONTAINER_SLURM_DIR}/view/assets/modules/slurm/.modulerc.lua"
+        modulerc_path=f"{CONTAINER_SLURM_DIR}/view/assets/modules/slurm/.modulerc.lua",
     )
-    
+
     # Generate the packaging script
     package_script = get_package_tarball_script(modulerc_script, version)
-    
+
     return textwrap.dedent(
         f"""\
 # Slurm Factory Build Container - Multi-Stage Build

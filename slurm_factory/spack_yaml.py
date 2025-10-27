@@ -171,7 +171,8 @@ def generate_spack_config(
         "zlib@1.3.1 %gcc@13.3.0",  # Build zlib first (needed by OpenSSL and others)
         "openssl@3.4.1 ^zlib@1.3.1 %gcc@13.3.0",  # Build OpenSSL with explicit zlib dependency
         "jansson@2.14 %gcc@13.3.0",  # JSON library for libjwt
-        "libjwt@1.15.3 ^openssl@3.4.1 ^zlib@1.3.1 ^jansson@2.14 %gcc@13.3.0",  # JWT library with all dependencies
+        # JWT library with all dependencies
+        "libjwt@1.15.3 ^openssl@3.4.1 ^zlib@1.3.1 ^jansson@2.14 %gcc@13.3.0",
         openldap_spec,  # Build openldap before curl since curl+ldap needs it
         curl_spec,
         "patchelf@0.18.0 %gcc@13.3.0",  # For RPATH fixing during relocatability
@@ -371,7 +372,24 @@ def generate_spack_config(
                     "projections": {"all": "."},  # Merge all packages into unified FHS structure
                     # No 'select' - include all installed packages automatically
                     # Only exclude external packages that are system-provided
-                    "exclude": ["cmake", "autoconf", "automake", "libtool", "python", "gmake", "m4", "pkgconf", "diffutils", "findutils", "gettext", "tar", "bison", "flex", "glibc", "gcc"],
+                    "exclude": [
+                        "cmake",
+                        "autoconf",
+                        "automake",
+                        "libtool",
+                        "python",
+                        "gmake",
+                        "m4",
+                        "pkgconf",
+                        "diffutils",
+                        "findutils",
+                        "gettext",
+                        "tar",
+                        "bison",
+                        "flex",
+                        "glibc",
+                        "gcc",
+                    ],
                 }
             },
             "config": {
