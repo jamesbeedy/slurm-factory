@@ -1,0 +1,229 @@
+/**
+ * Vantage CLI Documentation Custom Styles
+ */
+
+@import './commands.css';
+
+/* Root variables for Vantage brand colors */
+:root {
+  --vantage-purple: #6b46c1;
+  --vantage-purple-dark: #4c1d95;
+  --vantage-button: #AB9DFF;
+  --ifm-color-primary: #6b46c1;
+  --ifm-color-primary-dark: #4c1d95;
+  --ifm-color-primary-darker: #4c1d95;
+  --ifm-color-primary-darkest: #4c1d95;
+  --ifm-color-primary-light: #7c3aed;
+  --ifm-color-primary-lighter: #8b5cf6;
+  --ifm-color-primary-lightest: #a78bfa;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode variables */
+[data-theme='dark'] {
+  --vantage-purple: #6b46c1;
+  --vantage-purple-dark: #4c1d95;
+  --vantage-button: #AB9DFF;
+  --ifm-color-primary: #AB9DFF;
+  --ifm-color-primary-dark: #9084ff;
+  --ifm-color-primary-darker: #8b5cf6;
+  --ifm-color-primary-darkest: #7c3aed;
+  --ifm-color-primary-light: #c4b5fd;
+  --ifm-color-primary-lighter: #ddd6fe;
+  --ifm-color-primary-lightest: #ede9fe;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+/* Navbar styling - Vantage purple background */
+.navbar {
+  background-color: var(--vantage-purple) !important;
+  border-bottom: 1px solid var(--vantage-purple-dark);
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1000 !important;
+}
+
+/* Navbar inner container */
+.navbar__inner {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 1rem !important;
+  position: relative !important;
+}
+
+/* Ensure brand stays on left */
+.navbar__inner .navbar__brand {
+  order: 1 !important;
+  justify-self: flex-start !important;
+}
+
+/* Ensure items stay on right */
+.navbar__inner .navbar__items {
+  order: 3 !important;
+  justify-self: flex-end !important;
+}
+
+/* Logo and brand container - left side */
+.navbar__brand {
+  display: flex !important;
+  align-items: center !important;
+  flex-shrink: 0 !important;
+  position: relative !important;
+  z-index: 2 !important;
+}
+
+/* Navbar logo - constrained to left side */
+.navbar__logo {
+  height: auto !important;
+  width: auto !important;
+  max-height: 40px !important;
+  max-width: 120px !important;
+  margin-right: 0.5rem !important;
+  display: block !important;
+  position: relative !important;
+}
+
+/* Hide logo on mobile/iPhone screens */
+@media (max-width: 768px) {
+  .navbar__logo {
+    display: none !important;
+  }
+}
+
+/* Additional media query for iPhone specific breakpoints */
+@media (max-width: 480px) {
+  .navbar__logo {
+    display: none !important;
+  }
+}
+
+/* iPhone X and newer specific breakpoint */
+@media (max-width: 414px) {
+  .navbar__logo {
+    display: none !important;
+  }
+}
+
+/* Hide the title that's generated within navbar__brand */
+.navbar__brand .navbar__title,
+.navbar__brand b.navbar__title,
+.navbar__brand .text--truncate {
+  display: none !important;
+}
+
+/* Create centered title using pseudo-element */
+.navbar__inner::after {
+  content: "Vantage CLI Documentation";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: white;
+  font-weight: 600;
+  font-size: 1.2rem;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+/* Navbar items container - right side */
+.navbar__items {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-left: auto !important;
+}
+
+/* Navbar items styling */
+.navbar__item {
+  color: white !important;
+}
+
+.navbar__link {
+  color: white !important;
+}
+
+.navbar__link:hover {
+  color: #e5e7eb !important;
+}
+
+/* PyPI and GitHub buttons */
+.pypi-button,
+.github-button {
+  background-color: var(--vantage-button) !important;
+  color: white !important;
+  border-radius: 6px !important;
+  padding: 8px 16px !important;
+  margin: 0 4px !important;
+  border: none !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+}
+
+.pypi-button:hover,
+.github-button:hover {
+  background-color: #9084ff !important;
+  color: white !important;
+  text-decoration: none !important;
+}
+
+/* Dark mode toggle spacing */
+.toggle-spacer {
+  width: 8px;
+}
+
+/* Sidebar navigation links */
+.theme-doc-sidebar-item-link .menu__link:hover,
+.theme-doc-sidebar-item-category .menu__link:hover {
+  color: var(--vantage-button) !important;
+  background-color: rgba(171, 157, 255, 0.1) !important;
+}
+
+.theme-doc-sidebar-item-link .menu__link--active {
+  color: var(--vantage-button) !important;
+  background-color: rgba(171, 157, 255, 0.15) !important
+}
+
+/* Table of Contents (page navigation) links */
+.table-of-contents .table-of-contents__link:hover {
+  color: var(--vantage-button) !important;
+}
+
+.table-of-contents .table-of-contents__link--active {
+  color: var(--vantage-button) !important;
+  font-weight: 600 !important;
+}
+
+/* Pagination navigation */
+.pagination-nav__link:hover {
+  border-color: var(--vantage-button) !important;
+}
+
+.pagination-nav__link:hover .pagination-nav__label,
+.pagination-nav__link:hover .pagination-nav__sublabel {
+  color: var(--vantage-button) !important;
+}
+
+/* Breadcrumb links */
+.breadcrumbs__link:hover {
+  color: var(--vantage-button) !important;
+}
+
+/* Footer styling */
+.footer--dark {
+  background-color: var(--vantage-purple-dark) !important;
+}
+
+.footer__link-item:hover {
+  color: var(--vantage-button) !important;
+}
+
+/* Remove any footer logo sizing */
+.footer__logo {
+  height: auto !important;
+  width: auto !important;
+  max-height: 60px;
+}

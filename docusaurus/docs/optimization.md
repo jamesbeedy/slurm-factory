@@ -1,9 +1,3 @@
----
-layout: page
-title: Build Optimization Guide  
-description: Advanced optimization strategies for slurm-factory builds focusing on caching, dependency management, and performance
-permalink: /optimization/
----
 
 # Build Optimization Guide
 
@@ -666,9 +660,3 @@ strace -T -e trace=file uv run slurm-factory build --slurm-version 25.05 2>&1 | 
 
 This optimization guide provides comprehensive strategies for improving both build and deployment performance of slurm-factory packages across different environments and constraints.
 
----
-
-**Next Steps**: 
-- Apply optimizations to your [deployment](/slurm-factory/deployment/)
-- Learn about [troubleshooting](/slurm-factory/troubleshooting/) specific issues
-- Explore [contributing](/slurm-factory/contributing/) for custom optimizations

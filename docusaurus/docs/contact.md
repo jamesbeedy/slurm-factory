@@ -1,9 +1,3 @@
----
-layout: page
-title: Contact & Support
-description: How to get help and contact the slurm-factory team
-permalink: /contact/
----
 
 # Contact & Support
 
@@ -225,6 +219,3 @@ Configure GitHub notifications for:
 - Issue mentions
 - Discussion replies
 
----
-
-**We're here to help!** Don't hesitate to reach out if you have questions or need assistance with slurm-factory.

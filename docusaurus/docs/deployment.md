@@ -1,9 +1,3 @@
----
-layout: page
-title: Deployment Guide
-description: Complete guide for deploying relocatable Slurm packages built with slurm-factory
-permalink: /deployment/
----
 
 # Relocatable Deployment Guide
 
@@ -476,9 +470,3 @@ slurmd -t     # Test compute node config
 └── slurmdbd.log              # Database logs
 ```
 
----
-
-**Next Steps**: 
-- [Optimize your deployment](/slurm-factory/optimization/) for better performance
-- Learn about [troubleshooting](/slurm-factory/troubleshooting/) common issues
-- Explore [contributing](/slurm-factory/contributing/) and customization options

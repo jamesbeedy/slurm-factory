@@ -1,9 +1,3 @@
----
-layout: page
-title: Troubleshooting
-description: Common issues and solutions for slurm-factory
-permalink: /troubleshooting/
----
 
 # Troubleshooting Guide
 
@@ -178,6 +172,3 @@ cat ~/.slurm-factory/logs/latest.log
 - **Discussions**: [Get help](https://github.com/vantagecompute/slurm-factory/discussions)
 - **Documentation**: [Full docs](https://vantagecompute.github.io/slurm-factory)
 
----
-
-**Still having issues?** Contact us through [GitHub Issues](https://github.com/vantagecompute/slurm-factory/issues)

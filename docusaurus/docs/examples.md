@@ -1,9 +1,3 @@
----
-layout: default
-title: Examples
-nav_order: 8
-permalink: /examples/
----
 
 # Slurm Factory Examples
 

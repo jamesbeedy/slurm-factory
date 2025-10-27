@@ -1,9 +1,3 @@
----
-layout: page
-title: Contributing
-description: Guide for contributing to slurm-factory
-permalink: /contributing/
----
 
 # Contributing to Slurm Factory
 
@@ -304,6 +298,3 @@ We use [Semantic Versioning](https://semver.org/):
 - **API Reference**: [API Documentation](/slurm-factory/api-reference/)
 - **Examples**: [Example Repository](https://github.com/vantagecompute/slurm-factory/tree/dev/examples)
 
----
-
-**Thank you for contributing to slurm-factory!** Your contributions help make HPC cluster deployment easier for everyone.

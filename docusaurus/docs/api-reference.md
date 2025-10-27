@@ -1,9 +1,3 @@
----
-layout: page
-title: API Reference
-description: Complete API reference for slurm-factory Python module and CLI
-permalink: /api-reference/
----
 
 # API Reference
 
@@ -690,9 +684,3 @@ if __name__ == "__main__":
     exit(main())
 ```
 
----
-
-**See also**: 
-- [Architecture documentation](/slurm-factory/architecture/) for detailed design
-- [Examples repository](https://github.com/vantagecompute/slurm-factory/tree/dev/examples)
-- [Installation guide](/slurm-factory/installation/)

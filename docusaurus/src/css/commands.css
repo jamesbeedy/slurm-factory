@@ -1,0 +1,80 @@
+/* Custom styling for command documentation */
+
+/* Center H1 and H2 headers and apply custom colors */
+h1 {
+    color: #262572 !important;
+}
+
+h2 {
+    color: #0A0618 !important;
+}
+
+/* Ensure the colors apply to all H1 and H2 elements */
+.markdown h1,
+article h1,
+.theme-doc-markdown h1 {
+    color: #262572 !important;
+}
+
+.markdown h2,
+article h2,
+.theme-doc-markdown h2 {
+    color: #0A0618 !important;
+}
+
+/* Navigation label highlighting */
+.navbar__link--active,
+.navbar__link:hover,
+.menu__link--active,
+.menu__link:hover,
+.table-of-contents__link--active,
+.table-of-contents__link:hover,
+.theme-doc-sidebar-item-link-level-1.theme-doc-sidebar-item-link--active,
+.theme-doc-sidebar-item-link-level-2.theme-doc-sidebar-item-link--active,
+.theme-doc-sidebar-item-link-level-3.theme-doc-sidebar-item-link--active,
+.theme-doc-sidebar-item-link:hover {
+    color: #6145FF !important;
+    background-color: rgba(97, 69, 255, 0.1) !important;
+}
+
+/* Active breadcrumb styling */
+.breadcrumbs__link--active,
+.breadcrumbs__link:hover {
+    color: #6145FF !important;
+}
+
+/* Pagination navigation */
+.pagination-nav__link:hover .pagination-nav__label,
+.pagination-nav__link--active .pagination-nav__label {
+    color: #6145FF !important;
+}
+
+/* Make summary elements more clickable and add hover effects */
+details summary {
+    cursor: pointer !important;
+    transition: background-color 0.2s ease !important;
+}
+
+details summary:hover {
+    background-color: rgba(97, 69, 255, 0.05) !important;
+}
+
+/* Style for clickable summary elements with anchors */
+details summary[onclick] {
+    color: #6145FF !important;
+    font-weight: 600 !important;
+}
+
+details summary[onclick]:hover {
+    background-color: rgba(97, 69, 255, 0.1) !important;
+    text-decoration: underline !important;
+}
+
+/* Center footer navigation links */
+.footer__links {
+    justify-content: center !important;
+}
+
+.footer__col {
+    text-align: center !important;
+}

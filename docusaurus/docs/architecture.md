@@ -1,9 +1,3 @@
----
-layout: default
-title: Architecture
-nav_order: 4
-permalink: /architecture/
----
 
 # Slurm Factory Architecture
 
